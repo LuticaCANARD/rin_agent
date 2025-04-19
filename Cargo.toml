@@ -1,0 +1,12 @@
+[package]
+name = "rin_agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serenity = "*" # Removed due to conflict with openssl-sys
+rocket = "*"
+sea-orm = "*"
+dotenv = "*"
+tokio = { version = "*", features = ["full"] }
+tokio-postgres = "*"
