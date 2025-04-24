@@ -8,7 +8,8 @@ mod lib;
 #[tokio::main]
 async fn main() {
     let _ = dotenv::dotenv();
-    let discord_manager = discord::discord_bot_manager::BotManager::new().await;
+    let mut discord_manager = discord::discord_bot_manager::BotManager::new().await;
+    
     discord_manager.run().await;
     println!("Hello, world!");
 
