@@ -1,7 +1,15 @@
-mod model;
+mod model; 
+mod gemini; 
+mod discord; 
+mod api;
+mod lib;
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    let _ = dotenv::dotenv();
+    let discord_manager = discord::discord_bot_manager::BotManager::new().await;
+    discord_manager.run().await;
     println!("Hello, world!");
-    
+
 }

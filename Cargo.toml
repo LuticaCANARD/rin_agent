@@ -10,3 +10,5 @@ sea-orm = "*"
 dotenv = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-postgres = "*"
+curl = "0.4.47"
+lazy_static = "1.5.0"
