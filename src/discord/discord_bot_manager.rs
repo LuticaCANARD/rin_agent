@@ -4,15 +4,17 @@ use serenity::prelude::*;
 use serenity::async_trait;
 use serenity::model::gateway::Ready;
 use serenity::model::gateway::GatewayIntents;
-use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::{Command, Interaction};
-use serenity::model::application::InteractionType;
 use std::env;
+use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc;
+use crate::libs::thread_pipelines::ThreadPipeline;
 
-use crate::lib::logger::{LOGGER, LogLevel};
+use crate::libs::logger::{LOGGER, LogLevel};
 
 pub struct BotManager {
     client: Client,
+    thread_message_pipeline_to_ai:ThreadPipeline<String>,
 }
 
 
@@ -27,6 +29,7 @@ impl BotManager {
                 .event_handler(Handler)
                 .await
                 .expect("Error creating client"),
+            thread_message_pipeline_to_ai: ThreadPipeline::new(),
         }
     }
     pub async fn run(&mut self) {
