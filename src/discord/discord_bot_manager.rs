@@ -55,6 +55,11 @@ impl EventHandler for Handler {
     }
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
         println!("Guild created: {:?}, is_new: {:?}", guild.id, is_new);
+        
+        if(is_new.unwrap_or(true)){
+            // Register commands here
+
+        }
     }
     async fn guild_delete(&self, ctx: Context, guild: UnavailableGuild, full_guild: Option<Guild>) {
         println!("Guild deleted: {:?}", guild.id);
