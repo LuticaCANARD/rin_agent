@@ -1,3 +1,5 @@
+use serenity::all::Guild;
+use serenity::all::UnavailableGuild;
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -43,22 +45,32 @@ impl BotManager {
 pub struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!ping" {
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
-                let message = format!("Error sending message: {:?}", why);
-                LOGGER.log(LogLevel::Debug, &message);
-            }
-        }
-    }
+    //https://github.com/serenity-rs/serenity/blob/current/examples/e14_slash_commands/src/main.rs
     async fn ready(&self, ctx: Context, _ready: Ready) {
+        // Delete remaining commands and register new ones
+        
         println!("Bot is connected and ready!");
+
+
     }
+    async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
+        println!("Guild created: {:?}, is_new: {:?}", guild.id, is_new);
+    }
+    async fn guild_delete(&self, ctx: Context, guild: UnavailableGuild, full_guild: Option<Guild>) {
+        println!("Guild deleted: {:?}", guild.id);
+    }
+
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Ping(ping) = interaction {
-            
-        } else if let Interaction::Command(command) = interaction {
-            
+        match interaction {
+            Interaction::Command(command) => {
+                let command_name = command.data.name.clone();
+                let options = command.data.options.clone();
+                println!("Received command: {}", command_name);
+                // Handle the command here
+                // For example, you can call a function to process the command
+                // and send a response back to the user.
+            }
+            _ => {}
         }
     }
 }
