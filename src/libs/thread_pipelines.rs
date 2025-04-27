@@ -1,33 +1,22 @@
 // 이 파일에는 thread간 통신을 위한 파이프라인이 포함되어야 함.
 
-use std::sync::mpsc::{Sender, Receiver};
-use std::sync::mpsc;
+use tokio::sync::mpsc;
+use crate::libs::thread_message::DiscordToGeminiMessage;
 use lazy_static::lazy_static;
 
-
-pub struct ThreadPipeline<T> {
-    pub sender: Sender<T>,
-    pub receiver: Receiver<T>,
+pub struct AsyncThreadPipeline<T> {
+    pub sender: mpsc::Sender<T>,
+    pub receiver: mpsc::Receiver<T>,
 }
 
-impl<T> ThreadPipeline<T> {
-    pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
-        ThreadPipeline { sender, receiver }
-    }
-
-    pub fn send(&self, message: T) {
-        self.sender.send(message).unwrap();
-    }
-
-    pub fn receive(&self) -> T {
-        self.receiver.recv().unwrap()
+impl<T> AsyncThreadPipeline<T> {
+    pub fn new(buffer: usize) -> Self {
+        let (sender, receiver) = mpsc::channel(buffer);
+        AsyncThreadPipeline { sender, receiver }
     }
 }
-
 
 lazy_static! {
-    
-    
+    pub static ref DISCORD_TO_GEMINI_PIPELINE: AsyncThreadPipeline<DiscordToGeminiMessage<String>> =
+        AsyncThreadPipeline::new(100); // 버퍼 크기 설정
 }
-

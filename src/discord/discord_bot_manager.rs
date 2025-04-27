@@ -10,28 +10,28 @@ use serenity::model::application::{Command, Interaction};
 use std::env;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
-use crate::libs::thread_pipelines::ThreadPipeline;
+use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
 use crate::libs::logger::{LOGGER, LogLevel};
 
 pub struct BotManager {
     client: Client,
-    thread_message_pipeline_to_ai:ThreadPipeline<String>,
+    thread_message_pipeline_to_ai:AsyncThreadPipeline<String>,
 }
 
 
 impl BotManager {
-    pub async fn new() -> Self {
+    pub async fn new(buffer_size: usize) -> Self {
         let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
         let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+            | GatewayIntents::DIRECT_MESSAGES
+            | GatewayIntents::MESSAGE_CONTENT;
         Self {
             client: Client::builder(token, intents)
                 .event_handler(Handler)
                 .await
                 .expect("Error creating client"),
-            thread_message_pipeline_to_ai: ThreadPipeline::new(),
+            thread_message_pipeline_to_ai: AsyncThreadPipeline::new(buffer_size), // 버퍼 크기 설정
         }
     }
     pub async fn run(&mut self) {
