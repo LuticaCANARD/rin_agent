@@ -3,9 +3,12 @@ mod gemini;
 mod discord; 
 mod api;
 mod libs;
+use std::ops::Deref;
 use std::{process::Output, thread};
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 use crate::libs::thread_message::{DiscordToGeminiMessage};
+use gemini::GEMINI_CLIENT;
+use tokio::sync::Mutex; // Ensure Mutex is imported
 use libs::thread_pipelines::DISCORD_TO_GEMINI_PIPELINE;
 use gemini::gemini_client::GeminiClientTrait; // Ensure the trait is in scope
 use tokio::sync::watch::Ref;
@@ -19,22 +22,6 @@ async fn fn_discord_thread() {
     let mut discord_manager = discord::discord_bot_manager::BotManager::new().await;
     LOGGER.log(LogLevel::Debug, "Discord > Starting...");
     discord_manager.run().await;
-
-}
-async fn fn_gemini_thread<'a>() {
-    
-    let mut api_manager = <gemini::gemini_client::GeminiClient<DiscordToGeminiMessage<String>> as gemini::gemini_client::GeminiClientTrait<'a, DiscordToGeminiMessage<String>>>::new(&DISCORD_TO_GEMINI_PIPELINE,
-        move |message: DiscordToGeminiMessage<String>| {
-            let msg = message.message.clone();
-            let querys: Vec<String> = vec![
-                msg.clone(),
-            ];
-
-            querys
-        },
-    );
-    LOGGER.log(LogLevel::Debug, "Gemini API >Starting...");
-    api_manager.await_for_msg().await;
 
 }
 async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
@@ -62,11 +49,10 @@ async fn main() {
     let _ = dotenv::dotenv();
     
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
-    let gemini_thread = tokio::spawn(async move { fn_gemini_thread().await });
 
     // TODO : 감시자 쓰레드를 만들고, 다른 쓰레드가 종료되면 감시자가 다시시작하던 하도록 한다.
     
-    let threads_vector = vec![discord_thread, gemini_thread];
+    let threads_vector = vec![discord_thread];
     fn_aspect_thread(threads_vector).await;
 
     LOGGER.log(LogLevel::Debug, "Starting Discord bot thread");

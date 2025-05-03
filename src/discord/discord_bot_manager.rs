@@ -55,13 +55,13 @@ macro_rules! get_command_function {
 async fn register_commands(ctx: Context, guild_id: GuildId) {
     // Register commands here
     let commands = register_commands_module!{
-        ping
+        ping,
+        gemini_query
     };
-    guild_id.set_commands(ctx.http.clone(), commands.clone()).await.unwrap();
+    guild_id.set_commands(&ctx.http, commands.clone()).await.unwrap();
 }
 pub struct BotManager {
     client: Client,
-    thread_message_pipeline_to_ai:AsyncThreadPipeline<String>,
 }
 
 
@@ -76,7 +76,6 @@ impl BotManager {
                 .event_handler(Handler)
                 .await
                 .expect("Error creating client"),
-            thread_message_pipeline_to_ai: AsyncThreadPipeline::new(), // 버퍼 크기 설정
         }
     }
     pub async fn run(&mut self) {
@@ -136,7 +135,8 @@ impl EventHandler for Handler {
                 // For example, you can call a function to process the command
                 // and send a response back to the user.
                 let command_future = get_command_function! {
-                    ping
+                    ping,
+                    gemini_query
                 };
             
                 // 클로저 호출 후 `.await`

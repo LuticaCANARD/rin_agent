@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  redis:
+  rin_redis:
     image: redis:latest
-    container_name: redis
+    container_name: rin_redis
     ports:
       - "6379:6379"
     volumes:
@@ -11,9 +11,9 @@ services:
     restart: always
     networks:
       - app_network
-  postgres:
+  rin_postgres:
     image: postgres:latest
-    container_name: postgres
+    container_name: rin_postgres
     environment:
       POSTGRES_USER: yourusername
       POSTGRES_PASSWORD: yourpassword
@@ -25,25 +25,25 @@ services:
     restart: always
     networks:
       - app_network
-  rust_server:
-    build:
-      context: ./rust_server
-      dockerfile: Dockerfile
-    container_name: rust_server
-    ports:
-      - "8080:8080" # External debug connection
-    environment:
-      REDIS_HOST: redis
-      POSTGRES_HOST: postgres
-    depends_on:
-      - redis
-      - postgres
-    networks:
-      - app_network
-    restart: always
+  # rust_server:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: rust_server
+  #   ports:
+  #     - "8080:8080" # External debug connection
+  #   environment:
+  #     REDIS_HOST: redis
+  #     POSTGRES_HOST: postgres
+  #   depends_on:
+  #     - redis
+  #     - postgres
+  #   networks:
+  #     - app_network
+  #   restart: always
 
 volumes:
-  redis_data:
+  redis_data: 
   pg_data:
 
 networks:

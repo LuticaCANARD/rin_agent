@@ -15,7 +15,6 @@ pub struct GeminiClient<'a, T> where T: Clone {
 pub trait GeminiClientTrait<'a, T> where T: Clone {
     fn new(pipe: &'a AsyncThreadPipeline<T>, query_fn: fn(T) -> Vec<String>) -> Self;
     async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<String, String>;
-    async fn await_for_msg(&mut self);
 }
 impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
     fn new(pipe:&'a AsyncThreadPipeline<T>,query_fn: fn(T) -> Vec<String>) -> Self {
@@ -66,30 +65,57 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
             .send()
             .await
             .map_err(|e| e.to_string())?;
-
+/*
+ {
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "안녕하세요! 무엇을 도와드릴까요? 😊\n"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "avgLogprobs": -0.12830255925655365
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 3,
+    "candidatesTokenCount": 16,
+    "totalTokenCount": 19,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 3
+      }
+    ],
+    "candidatesTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 16
+      }
+    ]
+  },
+  "modelVersion": "gemini-2.0-flash"
+}
+ */
         let response_str = response.text().await.map_err(|e| e.to_string())?;
-
+        let response_json: serde_json::Value = serde_json::from_str(&response_str).map_err(|e| e.to_string())?;
+        let candidates = response_json["candidates"].as_array().ok_or("Invalid response format")?;
+        if candidates.is_empty() {
+            return Err("No candidates found in response".to_string());
+        }
+        let first_candidate = &candidates[0];
+        let content = first_candidate["content"].as_object().ok_or("Invalid response format")?;
+        let parts = content["parts"].as_array().ok_or("Invalid response format")?;
+        let last_end = parts.len() - 1;
+        let last_part = &parts[last_end];
+        let text = last_part["text"].as_str().ok_or("Invalid response format")?;
+        let response_str = text.to_string(); 
+        
         Ok(response_str)
     }
 
-    async fn await_for_msg(&mut self) {
-        let mut pipeline_receiver = self.pipeline_message_from_discord.receiver.clone();
-        loop {
-            // Wait for a message from the Discord pipeline
-            let _ = pipeline_receiver.changed().await.unwrap();
-            let msg = pipeline_receiver.borrow_and_update().clone();
-
-            LOGGER.log(LogLevel::Debug, "Received message from Discord pipeline.");
-            let querys = (self.query_function)(msg);
-            match self.send_query_to_gemini(querys).await {
-                Ok(response) => {
-                    LOGGER.log(LogLevel::Debug, &format!("Response: {:?}",response));
-                }
-                Err(e) => {
-                    LOGGER.log(LogLevel::Error, &format!("Error: {:?}", e));
-                }
-            }
-
-        }
-    }
 }
