@@ -22,6 +22,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let querys: Vec<String> = vec![
                 s.to_string()
             ];
+            
             let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(querys).await.unwrap();
 
             LOGGER.log(LogLevel::Debug, &format!("Gemini 응답: {}", response));
@@ -39,7 +40,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             _options.create_response(_ctx,CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("질문이 잘못되었습니다."))).await?;
             return Ok("질문이 잘못되었습니다.".to_string());
         }
-        
     }
 }
 
@@ -50,4 +50,8 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(CommandOptionType::String, "query", "질문할 내용을 입력하세요")
                 .required(true)
             )
+}
+
+pub async fn continue_query(_ctx: &Context,_ping:&PingInteraction) {
+    
 }

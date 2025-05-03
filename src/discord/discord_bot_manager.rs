@@ -51,6 +51,7 @@ macro_rules! get_command_function {
         }
     };
 }
+static CLIENT_ID: LazyLock<Option<UserId>> = LazyLock::new(|| (std::env::var("DISCORD_CLIENT_ID").ok()).and_then(|id| id.parse::<u64>().ok()).map(UserId::new));
 
 async fn register_commands(ctx: Context, guild_id: GuildId) {
     // Register commands here
@@ -84,6 +85,8 @@ impl BotManager {
         }
     }
 }
+
+use std::sync::LazyLock;
 
 
 pub struct Handler;
@@ -125,7 +128,32 @@ impl EventHandler for Handler {
             ctx.http.delete_guild_command(guild_id, command.id).await.unwrap();
         }
     }
+    async fn message(&self, ctx: Context, msg: Message) {
+        // Handle messages here
+        if msg.author.bot {
+            return;
+        }
+        LOGGER.log(LogLevel::Info, &format!("Received message: {}", msg.content));
+        // 기능 1: 동일 링크 3회 이상 전송 시 차단
 
+
+        // 기능 2: reply시 쿼리 탐색
+        let parent_id = msg.referenced_message;
+        if let Some(parent) = parent_id {
+            if parent.author.id == *CLIENT_ID.as_ref().unwrap() {
+                // Check if the message is a reply to another message
+                let content = msg.content.clone();
+                let query = content.split_whitespace().collect::<Vec<&str>>();
+                if query.len() > 0 {
+                    // Handle the query here
+                    LOGGER.log(LogLevel::Info, &format!("Query found: {:?}", query));
+                    // Call your Gemini client or any other function here
+                }
+            }
+        }
+
+
+    }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
@@ -142,6 +170,9 @@ impl EventHandler for Handler {
                 // 클로저 호출 후 `.await`
                 let _ = command_future(command_name, &ctx, &command).await;
 
+            }
+            Interaction::Ping(ping) =>{
+                LOGGER.log(LogLevel::Debug, "Discord > Ping interaction received");
             }
             _ => {
                 
