@@ -21,7 +21,7 @@ pub struct BotManager {
 
 
 impl BotManager {
-    pub async fn new(buffer_size: usize) -> Self {
+    pub async fn new() -> Self {
         let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
         let intents = GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::DIRECT_MESSAGES
@@ -31,7 +31,7 @@ impl BotManager {
                 .event_handler(Handler)
                 .await
                 .expect("Error creating client"),
-            thread_message_pipeline_to_ai: AsyncThreadPipeline::new(buffer_size), // 버퍼 크기 설정
+            thread_message_pipeline_to_ai: AsyncThreadPipeline::new(), // 버퍼 크기 설정
         }
     }
     pub async fn run(&mut self) {

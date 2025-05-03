@@ -3,27 +3,73 @@ mod gemini;
 mod discord; 
 mod api;
 mod libs;
-use std::thread;
+use std::{process::Output, thread};
+use crate::libs::thread_pipelines::AsyncThreadPipeline;
+use crate::libs::thread_message::{DiscordToGeminiMessage};
+use libs::thread_pipelines::DISCORD_TO_GEMINI_PIPELINE;
+use gemini::gemini_client::GeminiClientTrait; // Ensure the trait is in scope
+use tokio::sync::watch::Ref;
 
 use libs::logger::{self, LOGGER,LogLevel};
+use tokio::task;
 
 
 async fn fn_discord_thread() {
 
-    let buffer_size = 100; // 버퍼 크기 설정
-    let mut discord_manager = discord::discord_bot_manager::BotManager::new(buffer_size).await;
+    let mut discord_manager = discord::discord_bot_manager::BotManager::new().await;
     LOGGER.log(LogLevel::Debug, "Starting...");
     discord_manager.run().await;
 
+}
+async fn fn_gemini_thread<'a>() {
+    
+    let mut api_manager = <gemini::gemini_client::GeminiClient<DiscordToGeminiMessage<String>> as gemini::gemini_client::GeminiClientTrait<'a, DiscordToGeminiMessage<String>>>::new(&DISCORD_TO_GEMINI_PIPELINE,
+        move |message: DiscordToGeminiMessage<String>| {
+            let msg = message.message.clone();
+            let querys: Vec<String> = vec![
+                msg.clone(),
+            ];
+
+            querys
+        },
+    );
+    LOGGER.log(LogLevel::Debug, "Starting...");
+    api_manager.await_for_msg().await;
+
+}
+async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
+    loop  {
+        // TODO : 감시자 쓰레드 구현
+        // 감시자 쓰레드는 다른 쓰레드가 종료되면 다시 시작하도록 한다.
+        // TODO : 감시자 쓰레드는 종료된 쓰레드를 재시작하는 기능을 구현한다.
+        let mut end_thread_count:usize = 0;
+        for thread in threads.iter() {
+            if thread.is_finished() {
+                end_thread_count += 1;
+                LOGGER.log(LogLevel::Debug, "Thread finished, restarting...");
+            }
+        }
+        if end_thread_count == threads.len() {
+            LOGGER.log(LogLevel::Debug, "All threads finished, restarting...");
+            break;
+        }
+        
+    }
 }
 
 #[tokio::main]
 async fn main() {
     let _ = dotenv::dotenv();
     
-    let discord_thread = thread::spawn(move || fn_discord_thread());
+    let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
+    let gemini_thread = tokio::spawn(async move { fn_gemini_thread().await });
+
     // TODO : 감시자 쓰레드를 만들고, 다른 쓰레드가 종료되면 감시자가 다시시작하던 하도록 한다.
-    let _ = discord_thread.join().unwrap().await;
+    
+    let threads_vector = vec![discord_thread, gemini_thread];
+    fn_aspect_thread(threads_vector).await;
+
+    LOGGER.log(LogLevel::Debug, "Starting Discord bot thread");
 
     LOGGER.log(LogLevel::Debug, "Starting Discord bot thread");
 

@@ -1,24 +1,32 @@
 use std::env;
+use std::ops::Deref;
 use reqwest::Client;
 use serde_json::json;
+use tokio::sync::watch::{Receiver, Ref};
+use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
-pub struct GeminiClient {
+use crate::libs::logger::{LOGGER, LogLevel};
+pub struct GeminiClient<'a, T> where T: Clone {
     net_client: Client,
+    pipeline_message_from_discord: &'a AsyncThreadPipeline<T>,
+    query_function: fn(T) -> Vec<String>,
 }
 
-trait GeminiClientTrait {
-    fn new() -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<&str>) -> Result<String, String>;
-    
+pub trait GeminiClientTrait<'a, T> where T: Clone {
+    fn new(pipe: &'a AsyncThreadPipeline<T>, query_fn: fn(T) -> Vec<String>) -> Self;
+    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<String, String>;
+    async fn await_for_msg(&mut self);
 }
-impl GeminiClientTrait for GeminiClient {
-    fn new() -> Self {
+impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
+    fn new(pipe:&'a AsyncThreadPipeline<T>,query_fn: fn(T) -> Vec<String>) -> Self {
         GeminiClient {
-            net_client: Client::new()
+            net_client: Client::new(),
+            pipeline_message_from_discord: pipe,
+            query_function: query_fn,
         }
     }
-/**
- * curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+    
+/* curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
 -H 'Content-Type: application/json' \
 -X POST \
 -d '{
@@ -34,19 +42,23 @@ impl GeminiClientTrait for GeminiClient {
 }'
 * 
 */
-    async fn send_query_to_gemini(&mut self, query: Vec<&str>) -> Result<String, String> {
+
+    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<String, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
-        let url = format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}", api_key);
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
+            api_key
+        );
         let objected_query = json!({
             "contents": [
                 {
-                    "parts": query.iter().map(|&q| {
+                    "parts": query.iter().map(|q| {
                         json!({ "text": q })
                     }).collect::<Vec<_>>()
                 }
             ]
         });
-        
+
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -54,9 +66,26 @@ impl GeminiClientTrait for GeminiClient {
             .send()
             .await
             .map_err(|e| e.to_string())?;
-        
+
         let response_str = response.text().await.map_err(|e| e.to_string())?;
 
         Ok(response_str)
     }
-} 
+
+    async fn await_for_msg(&mut self) {
+        let mut pipeline_receiver = self.pipeline_message_from_discord.receiver.clone();
+
+        loop {
+            let pipeline_msg = pipeline_receiver.borrow_and_update().clone();
+            let querys = (self.query_function)(pipeline_msg);
+            match self.send_query_to_gemini(querys).await {
+                Ok(response) => {
+                    LOGGER.log(LogLevel::Debug, &format!("Response: {}", response));
+                }
+                Err(e) => {
+                    LOGGER.log(LogLevel::Error, &format!("Error: {}", e));
+                }
+            }
+        }
+    }
+}

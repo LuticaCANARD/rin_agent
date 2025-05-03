@@ -1,4 +1,5 @@
-pub struct DiscordToGeminiMessage<T>{
+#[derive(Default,Clone)]
+pub struct DiscordToGeminiMessage<T> where T: Default + Clone + 'static {
     pub message: T,
     pub sender: String,
     pub channel_id: String,
@@ -6,6 +7,8 @@ pub struct DiscordToGeminiMessage<T>{
     pub guild_id: String,
 
 }
+
+#[derive(Default,Clone)]
 pub struct GeminiThreadResponse<T>{
     pub message: T,
 }
