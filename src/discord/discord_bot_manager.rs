@@ -23,6 +23,7 @@ macro_rules! register_commands_module {
     };
 }
 macro_rules! get_command_function {
+    // TODO : 차후에 run에서 다 처리하도록 정정/ string으로 return하는 부분 제거
     ($($module:ident),*) => {
         |name: String, context: &Context, interaction: &CommandInteraction| {
             let name = name.clone(); // Clone the name to avoid lifetime issues
@@ -34,16 +35,20 @@ macro_rules! get_command_function {
                     $(
                         stringify!($module) => {
                             if let Err(err) = crate::discord::commands::$module::run(&context, &interaction).await {
-                                eprintln!("Error executing command {}: {:?}", stringify!($module), err);
+                                LOGGER.log(LogLevel::Error, &format!("Discord > Error executing command {}: {:?}", stringify!($module), err));
                             }
+                            let response = format!("Discord > Command {} executed successfully!", stringify!($module));
+                            LOGGER.log(LogLevel::Info, &response);
+                            response
                         }
                     )*
                     _ => {
-                        println!("Unknown command: {}", name);
+                        LOGGER.log(LogLevel::Error, &format!("Discord > Unknown command: {}", name));
+                        "Unknown command".to_string()
                     }
                 }
             })
-        };
+        }
     };
 }
 
@@ -89,8 +94,6 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, _ready: Ready) {
         // Delete remaining commands and register new ones
         
-        println!("Bot is connected and ready!");
-
         // Register commands here
         let _guild_id:u64 = 1026747872508653568; // Replace with your guild ID
         
@@ -102,21 +105,21 @@ impl EventHandler for Handler {
         }
         // Register commands
         register_commands(ctx.clone(), guild_id).await;
-
-
+        LOGGER.log(LogLevel::Info, "Discord > Bot is ready!");
     }
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
-        println!("Guild created: {:?}, is_new: {:?}", guild.id, is_new);
-        
+
+        LOGGER.log(LogLevel::Info, &format!("Guild created: {:?}", guild.id));
         if is_new.unwrap_or(true) {
             // Register commands here
             register_commands(ctx.clone(), guild.id).await;
+            LOGGER.log(LogLevel::Info, &format!("Commands registered for guild: {:?}", guild.id));
         }
     }
 
 
     async fn guild_delete(&self, ctx: Context, guild: UnavailableGuild, full_guild: Option<Guild>) {
-        println!("Guild deleted: {:?}", guild.id);
+        LOGGER.log(LogLevel::Info, &format!("Guild deleted: {:?}", guild.id));
         let guild_id = guild.id;
         let commands = ctx.http.get_guild_commands(guild_id).await.unwrap();
         for command in commands {
@@ -137,11 +140,12 @@ impl EventHandler for Handler {
                 };
             
                 // 클로저 호출 후 `.await`
-                command_future(command_name, &ctx, &command).await;
+                let _ = command_future(command_name, &ctx, &command).await;
 
+            }
+            _ => {
                 
             }
-            _ => {}
         }
     }
     
