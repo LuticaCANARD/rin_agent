@@ -5,7 +5,7 @@ use serenity::prelude::*;
 use crate::gemini::gemini_client::GeminiClientTrait;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
-
+use serenity::all::Embed;
 
 pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String, serenity::Error> {
     let options = _options.data.options();
@@ -22,12 +22,20 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let querys: Vec<String> = vec![
                 s.to_string()
             ];
-            
+
             let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(querys).await.unwrap();
 
             LOGGER.log(LogLevel::Debug, &format!("Gemini 응답: {}", response));
 
             let message = CreateInteractionResponseMessage::new().content(&response);
+
+            let message = message.add_embed(
+                CreateEmbed::new()
+                    .title(&format!("유저 {}의 질문", _options.user.name))
+                    .description(s.to_string())
+                    .color(0x00FF00) // Green color
+                    .footer(CreateEmbedFooter::new("Gemini API"))
+            );
 
             // Send a response to the interaction
             _options.create_response(_ctx,CreateInteractionResponse::Message(message)).await?;
