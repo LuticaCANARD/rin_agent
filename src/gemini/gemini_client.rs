@@ -75,7 +75,8 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
     async fn await_for_msg(&mut self) {
         let mut pipeline_receiver = self.pipeline_message_from_discord.receiver.clone();
         loop {
-            let msg = pipeline_receiver.changed().await.unwrap();
+            // Wait for a message from the Discord pipeline
+            let _ = pipeline_receiver.changed().await.unwrap();
             let msg = pipeline_receiver.borrow_and_update().clone();
 
             LOGGER.log(LogLevel::Debug, "Received message from Discord pipeline.");
