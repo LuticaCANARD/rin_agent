@@ -74,18 +74,21 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
 
     async fn await_for_msg(&mut self) {
         let mut pipeline_receiver = self.pipeline_message_from_discord.receiver.clone();
-
         loop {
-            let pipeline_msg = pipeline_receiver.borrow_and_update().clone();
-            let querys = (self.query_function)(pipeline_msg);
+            let msg = pipeline_receiver.changed().await.unwrap();
+            let msg = pipeline_receiver.borrow_and_update().clone();
+
+            LOGGER.log(LogLevel::Debug, "Received message from Discord pipeline.");
+            let querys = (self.query_function)(msg);
             match self.send_query_to_gemini(querys).await {
                 Ok(response) => {
-                    LOGGER.log(LogLevel::Debug, &format!("Response: {}", response));
+                    LOGGER.log(LogLevel::Debug, &format!("Response: {:?}",response));
                 }
                 Err(e) => {
-                    LOGGER.log(LogLevel::Error, &format!("Error: {}", e));
+                    LOGGER.log(LogLevel::Error, &format!("Error: {:?}", e));
                 }
             }
+
         }
     }
 }
