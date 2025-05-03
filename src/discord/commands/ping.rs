@@ -1,8 +1,10 @@
-use serenity::builder::CreateCommand;
-use serenity::model::application::ResolvedOption;
+use serenity::builder::*;
+use serenity::model::prelude::*;
+use serenity::prelude::*;
 
-pub fn run(_options: &[ResolvedOption]) -> String {
-    "Hey, I'm alive!".to_string()
+
+pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String, serenity::Error> {
+    Ok("Hey, I'm alive!".to_string())
 }
 
 pub fn register() -> CreateCommand {

@@ -15,9 +15,9 @@ use tokio::task;
 
 
 async fn fn_discord_thread() {
-
+    
     let mut discord_manager = discord::discord_bot_manager::BotManager::new().await;
-    LOGGER.log(LogLevel::Debug, "Starting...");
+    LOGGER.log(LogLevel::Debug, "Discord > Starting...");
     discord_manager.run().await;
 
 }
@@ -33,7 +33,7 @@ async fn fn_gemini_thread<'a>() {
             querys
         },
     );
-    LOGGER.log(LogLevel::Debug, "Starting...");
+    LOGGER.log(LogLevel::Debug, "Gemini API >Starting...");
     api_manager.await_for_msg().await;
 
 }
@@ -46,7 +46,7 @@ async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
         for thread in threads.iter() {
             if thread.is_finished() {
                 end_thread_count += 1;
-                LOGGER.log(LogLevel::Debug, "Thread finished, restarting...");
+                LOGGER.log(LogLevel::Debug, "Thread finished");
             }
         }
         if end_thread_count == threads.len() {
@@ -70,8 +70,4 @@ async fn main() {
     fn_aspect_thread(threads_vector).await;
 
     LOGGER.log(LogLevel::Debug, "Starting Discord bot thread");
-
-    LOGGER.log(LogLevel::Debug, "Starting Discord bot thread");
-
-
 }
