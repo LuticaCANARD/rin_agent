@@ -6,6 +6,14 @@ use tokio::sync::watch::{Receiver, Ref};
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
 use crate::libs::logger::{LOGGER, LogLevel};
+
+#[derive(Debug, Clone)]
+pub struct GeminiResponse {
+    pub content: String,
+    pub finish_reason: String,
+    pub avg_logprobs: f64,
+}
+
 pub struct GeminiClient<'a, T> where T: Clone {
     net_client: Client,
     pipeline_message_from_discord: &'a AsyncThreadPipeline<T>,
@@ -14,7 +22,7 @@ pub struct GeminiClient<'a, T> where T: Clone {
 
 pub trait GeminiClientTrait<'a, T> where T: Clone {
     fn new(pipe: &'a AsyncThreadPipeline<T>, query_fn: fn(T) -> Vec<String>) -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<String, String>;
+    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<GeminiResponse, String>;
 }
 impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
     fn new(pipe:&'a AsyncThreadPipeline<T>,query_fn: fn(T) -> Vec<String>) -> Self {
@@ -42,7 +50,7 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
 * 
 */
 
-    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<String, String> {
+    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
@@ -115,7 +123,15 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
         let text = last_part["text"].as_str().ok_or("Invalid response format")?;
         let response_str = text.to_string(); 
         
-        Ok(response_str)
+        let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
+        let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
+        let gemini_response = GeminiResponse {
+            content: response_str.clone(),
+            finish_reason,
+            avg_logprobs,
+        };
+
+        Ok(gemini_response)
     }
 
 }

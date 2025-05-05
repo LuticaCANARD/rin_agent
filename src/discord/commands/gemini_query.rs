@@ -19,27 +19,35 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
         ResolvedValue::String(ref s) => {
             // Do something with the string value
             LOGGER.log(LogLevel::Debug, &format!("질문: {}", s));
-            let querys: Vec<String> = vec![
-                s.to_string()
-            ];
+            let discord_response_message = CreateInteractionResponseMessage::new().content(&format!("질문 : {}", s));
 
-            let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(querys).await.unwrap();
+            // Send a response to the interaction
+            _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
+
+            let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(vec![
+                s.to_string()
+            ]).await.unwrap();
+            let response_avg_logprobs = response.avg_logprobs;
+            let response = response.content;
 
             LOGGER.log(LogLevel::Debug, &format!("Gemini 응답: {}", response));
 
-            let message = CreateInteractionResponseMessage::new().content(&response);
+            let response_msg = CreateMessage::new()
+                .content(response)
+                .add_embed(
+                    CreateEmbed::new()
+                        .title("Gemini 응답")
+                        .description(response_avg_logprobs.to_string())
+                        .color(0x00FF00) // Green color
+                        .footer(CreateEmbedFooter::new("Gemini API"))
+                );
 
-            let message = message.add_embed(
-                CreateEmbed::new()
-                    .title(&format!("유저 {}의 질문", _options.user.name))
-                    .description(s.to_string())
-                    .color(0x00FF00) // Green color
-                    .footer(CreateEmbedFooter::new("Gemini API"))
-            );
+            _options.channel_id.send_message(_ctx, response_msg).await?;
 
-            // Send a response to the interaction
-            _options.create_response(_ctx,CreateInteractionResponse::Message(message)).await?;
-            return Ok(response);
+
+            // _options.channel_id.say(_ctx, response).await?;
+
+            return Ok("ok".to_string());
 
         },
         _ => {
