@@ -6,15 +6,19 @@ edition = "2021"
 [workspace]
 members = [
     "entity",
-    "migration",
+    # "migration",
     ".", # This is the main crate
 ]
+
+[[bin]]
+name = "rin_agent"
+path = "src/main.rs"
 
 [dependencies]
 serenity = "*" # Removed due to conflict with openssl-sys
 rocket = "*"
 sea-orm = { version = "*", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ] }
-migration = { path = "migration" } # depends on your needs
+# migration = { path = "migration" } # depends on your needs
 entity = { path = "entity" }
 dotenv = "*"
 tokio = { version = "*", features = ["full"] }
