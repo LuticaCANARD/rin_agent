@@ -5,11 +5,15 @@ mod api;
 mod libs;
 mod setting;
 mod utils;
+#[macro_use] extern crate rocket;
+use api::routers::get_rocket;
 use model::db::driver::connect_to_db;
 
 use libs::logger::{self, LOGGER,LogLevel};
 use tokio::task;
-
+use tokio::signal;
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 async fn fn_discord_thread() {
     
@@ -19,23 +23,32 @@ async fn fn_discord_thread() {
 
 }
 async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
-    loop  {
-        // TODO : 감시자 쓰레드 구현
-        // 감시자 쓰레드는 다른 쓰레드가 종료되면 다시 시작하도록 한다.
-        // TODO : 감시자 쓰레드는 종료된 쓰레드를 재시작하는 기능을 구현한다.
-        let mut end_thread_count:usize = 0;
-        for thread in threads.iter() {
-            if thread.is_finished() {
-                end_thread_count += 1;
-                LOGGER.log(LogLevel::Debug, "Thread finished");
-            }
-        }
-        if end_thread_count == threads.len() {
-            LOGGER.log(LogLevel::Debug, "All threads finished, restarting...");
-            break;
-        }
-        
+
+    let sigint_notify = Arc::new(Notify::new());
+    let sigint_notify_clone = sigint_notify.clone();
+
+    tokio::spawn(async move {
+        signal::ctrl_c().await.expect("Failed to listen for SIGINT");
+        LOGGER.log(LogLevel::Debug, "SIGINT received, shutting down...");
+        sigint_notify_clone.notify_one();
+    });
+
+    sigint_notify.notified().await;
+    LOGGER.log(LogLevel::Debug, "Waiting for all threads to finish...");
+    for thread in threads {
+        let _ = thread.await;
     }
+    LOGGER.log(LogLevel::Debug, "All threads have finished.");
+}
+
+async fn fn_web_server_thread() {
+    let _ = dotenv::dotenv();
+    let _db_init_ = connect_to_db().await;
+
+    LOGGER.log(LogLevel::Debug, "Web server > Starting...");
+    get_rocket().launch().await.unwrap();
+    LOGGER.log(LogLevel::Debug, "Web server > Stopped");
+
 }
 
 #[tokio::main]
@@ -43,12 +56,16 @@ async fn main() {
     let _ = dotenv::dotenv();
     
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
+    let web_server_thread = tokio::spawn(async move { fn_web_server_thread().await });
 
     let _db_init_ = connect_to_db().await;
 
     // TODO : 감시자 쓰레드를 만들고, 다른 쓰레드가 종료되면 감시자가 다시시작하던 하도록 한다.
     
-    let threads_vector = vec![discord_thread];
+    let threads_vector = vec![
+        discord_thread,
+        web_server_thread,
+    ];
     fn_aspect_thread(threads_vector).await;
 
     LOGGER.log(LogLevel::Debug, "Starting Discord bot thread");

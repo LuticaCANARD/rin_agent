@@ -100,17 +100,10 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             };
             
             let a = AiContextEntity::insert(inserted)
-                    .add(response_record)
-                    .exec(&db)
-                    .await
-                    .unwrap();
-            
-            let id = a.last_insert_id;
-            let id = id.to_string();
-            LOGGER.log(LogLevel::Debug, &format!("DB Inserted ID: {:?}", id));
-
-            LOGGER.log(LogLevel::Debug, &format!("DB Res: {:?}", id));
-
+                .add(response_record)
+                .exec(&db)
+                .await
+                .unwrap();
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", a));
 
             // _options.channel_id.say(_ctx, response).await?;

@@ -80,6 +80,15 @@ impl BotManager {
         }
     }
     pub async fn run(&mut self) {
+
+        tokio::spawn(async move {
+            if let Err(err) = signal::ctrl_c().await {
+                LOGGER.log(LogLevel::Error, &format!("Failed to listen for SIGINT: {:?}", err));
+            } else {
+                LOGGER.log(LogLevel::Info, "SIGINT received, shutting down...");
+                std::process::exit(0);
+            }
+        });
         if let Err(why) = self.client.start().await {
             println!("Client error: {:?}", why);
         }
@@ -87,6 +96,7 @@ impl BotManager {
 }
 
 use std::sync::LazyLock;
+use tokio::signal;
 
 
 pub struct Handler;
