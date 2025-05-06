@@ -44,9 +44,7 @@ async fn main() {
     
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
 
-    let db_cnn = connect_to_db().await;
-    let _pool = db_cnn.get_postgres_connection_pool();
-
+    let _db_init_ = connect_to_db().await;
 
     // TODO : 감시자 쓰레드를 만들고, 다른 쓰레드가 종료되면 감시자가 다시시작하던 하도록 한다.
     
