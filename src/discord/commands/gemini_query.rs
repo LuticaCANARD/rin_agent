@@ -98,13 +98,18 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 context: sea_orm::Set(response.clone()),
                 ..Default::default()
             };
-            let a = AiContextEntity::insert(inserted)
-            .add(response_record)
-            .exec(&db)
-            .await
-            .unwrap();
-
             
+            let a = AiContextEntity::insert(inserted)
+                    .add(response_record)
+                    .exec(&db)
+                    .await
+                    .unwrap();
+            
+            let id = a.last_insert_id;
+            let id = id.to_string();
+            LOGGER.log(LogLevel::Debug, &format!("DB Inserted ID: {:?}", id));
+
+            LOGGER.log(LogLevel::Debug, &format!("DB Res: {:?}", id));
 
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", a));
 
