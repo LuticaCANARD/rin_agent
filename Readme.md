@@ -23,3 +23,7 @@ src/
 └── config.rs              # 설정 및 환경 변수 로드
 
 ```
+
+## DB migration
+
+> cd .\entity\src\ && sea-orm-cli generate entity --lib

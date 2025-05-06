@@ -53,10 +53,10 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let response = response.content;
 
             LOGGER.log(LogLevel::Debug, &format!("Gemini 응답: {}", response));
-            
-            if response.len() > 2000 {
+            let mut send_msgs:Vec<Message> = vec![];
+            if response.len() > 1950 {
                 let mut called_user = false;
-                let chuncks = split_text_by_length_and_markdown(&response, 2000);
+                let chuncks = split_text_by_length_and_markdown(&response, 1950);
                 let user_mention = format!("<@{}>\n", _options.user.id).to_string();
                 for chunk in 0..chuncks.len() {
                     let mut msg_last = String::new();
@@ -75,7 +75,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         response_avg_logprobs.to_string(),
                         chunk == chuncks.len() - 1 // 마지막 chunk에만 embed 추가
                     );
-                    _options.channel_id.send_message(_ctx, response_msg).await?;
+                    send_msgs.push(_options.channel_id.send_message(_ctx, response_msg).await.unwrap());
                 }
             } else {
                 let user_mention = format!("<@{}>\n", _options.user.id).to_string();
@@ -83,7 +83,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                     user_mention + &response,
                     "Gemini 응답".to_string(),
                     response_avg_logprobs.to_string(),true);
-                _options.channel_id.send_message(_ctx, response_msg).await?;
+                send_msgs.push(_options.channel_id.send_message(_ctx, response_msg).await.unwrap());
             }
             let inserted = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
@@ -96,7 +96,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let response_record = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
                 context: sea_orm::Set(response.clone()),
-
                 ..Default::default()
             };
             let a = AiContextEntity::insert(inserted)
@@ -104,6 +103,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             .exec(&db)
             .await
             .unwrap();
+
+            
 
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", a));
 
