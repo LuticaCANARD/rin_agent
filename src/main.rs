@@ -5,18 +5,7 @@ mod api;
 mod libs;
 mod setting;
 mod utils;
-use std::ops::Deref;
-use std::{process::Output, thread};
-use crate::libs::thread_pipelines::AsyncThreadPipeline;
-use crate::libs::thread_message::{DiscordToGeminiMessage};
-use gemini::GEMINI_CLIENT;
 use model::db::driver::connect_to_db;
-use sea_orm::Database;
-use tokio::sync::Mutex; // Ensure Mutex is imported
-use libs::thread_pipelines::DISCORD_TO_GEMINI_PIPELINE;
-use gemini::gemini_client::GeminiClientTrait; // Ensure the trait is in scope
-use tokio::sync::watch::Ref;
-
 
 use libs::logger::{self, LOGGER,LogLevel};
 use tokio::task;
@@ -55,7 +44,10 @@ async fn main() {
     
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
 
-    connect_to_db().await;
+    let db_cnn = connect_to_db().await;
+    let _pool = db_cnn.get_postgres_connection_pool();
+
+
     // TODO : 감시자 쓰레드를 만들고, 다른 쓰레드가 종료되면 감시자가 다시시작하던 하도록 한다.
     
     let threads_vector = vec![discord_thread];
