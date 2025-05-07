@@ -3,17 +3,13 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "tb_ai_context")]
+#[sea_orm(table_name = "tb_discord_ai_context")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub user_id: i64,
-    #[sea_orm(column_type = "Text")]
-    pub context: String,
-    pub created_at: DateTimeWithTimeZone,
-    pub updated_at: DateTime,
     pub guild_id: i64,
-    pub channel_id: i64,
+    pub root_msg: i64,
+    pub parent_context: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

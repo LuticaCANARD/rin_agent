@@ -26,4 +26,4 @@ src/
 
 ## DB migration
 
-> cd .\entity\src\ && sea-orm-cli generate entity --lib
+> cd .\entity\src\ && sea-orm-cli generate entity --lib && cd ../..
