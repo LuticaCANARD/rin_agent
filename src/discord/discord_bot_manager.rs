@@ -17,6 +17,8 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use std::sync::LazyLock;
 use tokio::signal;
 
+use super::commands::gemini_query;
+
 macro_rules! register_commands_module {
     ($($module:ident),*) => {
         vec![
@@ -165,12 +167,13 @@ impl EventHandler for Handler {
         if let Some(parent) = parent_id {
             if parent.author.id == *CLIENT_ID.as_ref().unwrap() {
                 // Check if the message is a reply to another message
+
                 let content = msg.content.clone();
                 let query = content.split_whitespace().collect::<Vec<&str>>();
                 if query.len() > 0 {
                     // Handle the query here
                     LOGGER.log(LogLevel::Info, &format!("Query found: {:?}", query));
-                    // Call your Gemini client or any other function here
+                    gemini_query::continue_query(&ctx, &msg).await.unwrap();
                 }
             }
         }

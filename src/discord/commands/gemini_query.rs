@@ -129,6 +129,6 @@ pub fn register() -> CreateCommand {
             )
 }
 
-pub async fn continue_query(_ctx: &Context,_ping:&PingInteraction) {
+pub async fn continue_query(_ctx: &Context,_ping:&Message) {
     
 }
