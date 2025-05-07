@@ -32,15 +32,19 @@ fn generate_message_block(box_msg: String, title:String , description:String,nee
     }
 }
 
-async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_msg:String,ref_msg:Option<Message>)->Vec<Message> {
+fn user_mention(user: &User) -> String {
+    format!("<@{}>\n", user.id.get())
+}
+
+async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,origin_msg:String,ref_msg:Option<Message>)->Vec<Message> {
     let mut send_msgs:Vec<Message> = vec![];
     let mut called_user = false;
     let chuncks = split_text_by_length_and_markdown(&origin_msg, 1950);
     for chunk in 0..chuncks.len() {
         let mut msg_last = String::new();
         if called_user == false {
-            let strs = &chuncks.get(chunk).unwrap().clone();
-
+            let strs =  user_mention(&origin_user)+ &chuncks.get(chunk).unwrap().clone();
+            
             msg_last = strs.to_string();
             called_user = true;
         } else {
@@ -75,7 +79,11 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
     }
     let query = query.unwrap().value.clone();
     match query {
+        
         ResolvedValue::String(ref s) => {
+            let chatting_channel = _ctx.http.get_channel(_options.channel_id).await.unwrap();
+            let typing = chatting_channel.guild().unwrap().start_typing(&_ctx.http);
+
             // Do something with the string value
             LOGGER.log(LogLevel::Debug, &format!("질문: {}", s));
             let discord_response_message = CreateInteractionResponseMessage::new().content(&format!("질문 : {}", s));
@@ -89,7 +97,10 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let response = response.content;
 
             LOGGER.log(LogLevel::Debug, &format!("Gemini 응답: {}", response));
-            let send_msgs:Vec<Message> = send_split_msg(_ctx, _options.channel_id, response.clone(),None).await;
+            let send_msgs:Vec<Message> = send_split_msg(_ctx, _options.channel_id, 
+                _options.user.clone(),
+                response.clone(),None).await;
+            typing.stop();
             let inserted_user_question = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
                 context: sea_orm::Set(str_query),
@@ -178,9 +189,13 @@ pub fn register() -> CreateCommand {
 pub async fn continue_query(_ctx: &Context,calling_msg:&Message) {
     
 
-    _ctx.set_activity(Some(ActivityData::playing("Gemini Query")));
-    
+    let channel_lock = _ctx.http.get_channel(calling_msg.channel_id).await.unwrap();
+    let typing = channel_lock.guild().unwrap().start_typing(&_ctx.http);
+
+
     let db = DB_CONNECTION_POOL.get().unwrap().clone();
+    
+    
     LOGGER.log(LogLevel::Debug, &format!("DB Connection: {:?}", db));
     let msg_ref_id = calling_msg.referenced_message.clone().unwrap().id.get() as i64;
     LOGGER.log(LogLevel::Debug, &format!("msg_ref_id: {:?}", msg_ref_id));
@@ -204,7 +219,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message) {
     }
     LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context));
     let ai_contexts = ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>();
-    let mut before_messages = tb_ai_context::Entity::find()
+    let before_messages = tb_ai_context::Entity::find()
     .join_as(
         JoinType::InnerJoin,
         Into::<sea_orm::RelationDef>::into(tb_discord_message_to_at_context::Entity::belongs_to(tb_ai_context::Entity)
@@ -237,8 +252,12 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message) {
     
     // TODO : 분기처리.
 
-    let send_msgs:Vec<Message> = send_split_msg(_ctx, calling_msg.channel_id, ai_response.content.clone(), Some(calling_msg.clone())).await;
-    _ctx.set_activity(None);
+    let send_msgs:Vec<Message> = send_split_msg(_ctx, 
+        calling_msg.channel_id, 
+        calling_msg.author.clone(),
+    ai_response.content.clone(), 
+    Some(calling_msg.clone())).await;
+    typing.stop();
     let inserted = AiContextModel {
         user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
         context: sea_orm::Set(calling_msg.content.clone()),
