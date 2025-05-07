@@ -1,3 +1,4 @@
+use serenity::all::CreateCommand;
 use serenity::all::Guild;
 use serenity::all::GuildId;
 use serenity::all::UnavailableGuild;
@@ -9,9 +10,12 @@ use serenity::model::gateway::GatewayIntents;
 use serenity::model::application::{Command, Interaction};
 
 use std::env;
-use crate::libs::thread_pipelines::AsyncThreadPipeline;
 use serenity::model::prelude::*;
+use std::pin::Pin;
+use std::future::Future;
 use crate::libs::logger::{LOGGER, LogLevel};
+use std::sync::LazyLock;
+use tokio::signal;
 
 macro_rules! register_commands_module {
     ($($module:ident),*) => {
@@ -51,14 +55,28 @@ macro_rules! get_command_function {
         }
     };
 }
+
+static USING_COMMANDS: LazyLock<Vec<CreateCommand>> = LazyLock::new(|| {
+    register_commands_module!{
+        ping,
+        gemini_query
+    }
+});
+
+static USING_ACTIVATE_COMMANDS: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> Pin<Box<dyn Future<Output = String> + Send>> + Send + Sync>> = LazyLock::new(|| {
+    Box::new(get_command_function!(
+        ping,
+        gemini_query))
+});
+
+
+
+
 static CLIENT_ID: LazyLock<Option<UserId>> = LazyLock::new(|| (std::env::var("DISCORD_CLIENT_ID").ok()).and_then(|id| id.parse::<u64>().ok()).map(UserId::new));
 
 async fn register_commands(ctx: Context, guild_id: GuildId) {
     // Register commands here
-    let commands = register_commands_module!{
-        ping,
-        gemini_query
-    };
+    let commands = USING_COMMANDS.clone();
     guild_id.set_commands(&ctx.http, commands.clone()).await.unwrap();
 }
 pub struct BotManager {
@@ -94,11 +112,6 @@ impl BotManager {
         }
     }
 }
-
-use std::sync::LazyLock;
-use tokio::signal;
-
-
 pub struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
@@ -172,10 +185,7 @@ impl EventHandler for Handler {
                 // Handle the command here
                 // For example, you can call a function to process the command
                 // and send a response back to the user.
-                let command_future = get_command_function! {
-                    ping,
-                    gemini_query
-                };
+                let command_future = &USING_ACTIVATE_COMMANDS;
             
                 // 클로저 호출 후 `.await`
                 let _ = command_future(command_name, &ctx, &command).await;

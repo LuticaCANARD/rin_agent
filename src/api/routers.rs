@@ -1,4 +1,4 @@
-use rocket::{post,get};
+use rocket::{get, post, Config};
 
 use std::sync::LazyLock;
 
@@ -13,10 +13,10 @@ pub fn not_found() -> &'static str {
     "404 Not Found"
 }
 
-
-
 pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
+
     rocket::build()
         .mount("/", routes![test_index])
         .register("/", catchers![not_found])
+        
 }
