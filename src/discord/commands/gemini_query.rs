@@ -49,7 +49,6 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_msg:Stri
         let mut response_msg = CreateMessage::new()
             .content(msg_last);
         
-        LOGGER.log(LogLevel::Debug, &format!("chunk: {},leng:{}", chunk, chuncks.len()));
         if chunk == chuncks.len() - 1 {
             let strs = &chuncks.get(chunk).unwrap().clone();
             response_msg = generate_message_block(strs.to_string(),
@@ -57,7 +56,6 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_msg:Stri
             chunk == chuncks.len() - 1);
         }
         if chunk == 0 {
-            LOGGER.log(LogLevel::Debug, &format!("chunk: {},leng:{},there is ref {}", chunk, chuncks.len(),ref_msg.is_some()));
             if let Some(ref ref_msg) = ref_msg {
                 response_msg = response_msg.reference_message(ref_msg);
             }
