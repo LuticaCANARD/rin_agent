@@ -163,17 +163,18 @@ impl EventHandler for Handler {
 
 
         // 기능 2: reply시 쿼리 탐색
-        let parent_id = msg.referenced_message;
+        let cpy_msg = msg.clone();
+        let parent_id = cpy_msg.referenced_message;
         if let Some(parent) = parent_id {
             if parent.author.id == *CLIENT_ID.as_ref().unwrap() {
                 // Check if the message is a reply to another message
 
-                let content = msg.content.clone();
+                let content = cpy_msg.content.clone();
                 let query = content.split_whitespace().collect::<Vec<&str>>();
                 if query.len() > 0 {
                     // Handle the query here
                     LOGGER.log(LogLevel::Info, &format!("Query found: {:?}", query));
-                    gemini_query::continue_query(&ctx, &msg).await.unwrap();
+                    gemini_query::continue_query(&ctx, &msg).await;
                 }
             }
         }
