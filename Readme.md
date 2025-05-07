@@ -27,3 +27,8 @@ src/
 ## DB migration
 
 > cd .\entity\src\ && sea-orm-cli generate entity --lib && cd ../..
+
+## 서버 구동
+
+> cargo build --release
+> nohup ./target/release/rin_agent & 
