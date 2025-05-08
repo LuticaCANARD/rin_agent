@@ -1,7 +1,7 @@
 use std::env;
 use std::ops::Deref;
 use reqwest::Client;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio::sync::watch::{Receiver, Ref};
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
@@ -9,7 +9,8 @@ use crate::libs::logger::{LOGGER, LogLevel};
 
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
-    pub content: String,
+    pub discord_msg: String,
+    pub sub_items: Vec<String>,
     pub finish_reason: String,
     pub avg_logprobs: f64,
 }
@@ -45,7 +46,24 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
         }
         ]
     }
-    ]
+    ],
+    "generationConfig": {
+        "responseMimeType": "application/json",
+        "responseSchema": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "recipeName": { "type": "STRING" },
+              "ingredients": {
+                "type": "ARRAY",
+                "items": { "type": "STRING" }
+              }
+            },
+            "propertyOrdering": ["recipeName", "ingredients"]
+          }
+        }
+      }
 }'
 * 
 */
@@ -56,6 +74,26 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
             api_key
         );
+        let generate_config = json!(
+            {
+                "responseMimeType": "application/json",
+                "responseSchema": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "discordMessage": { "type": "STRING" },
+                            "subItems": {
+                                "type": "ARRAY",
+                                "items": { "type": "STRING" }
+                            }
+                        },
+                        "propertyOrdering": ["discordMessage", "subItems"]
+                  }
+                  
+                }
+            }
+        );
         let objected_query = json!({
             "contents": [
                 {
@@ -63,7 +101,8 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
                         json!({ "text": q })
                     }).collect::<Vec<_>>()
                 }
-            ]
+            ],
+            "generationConfig": generate_config
         });
 
         let response = self.net_client
@@ -73,6 +112,8 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
             .send()
             .await
             .map_err(|e| e.to_string())?;
+        let response_result = response.text().await.unwrap();
+        LOGGER.log(LogLevel::Debug, &format!("Gemini > Response: {:?}", response_result));
 /*
  {
   "candidates": [
@@ -109,24 +150,41 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
   "modelVersion": "gemini-2.0-flash"
 }
  */
-        let response_str = response.text().await.map_err(|e| e.to_string())?;
+        let response_str = response_result;
         let response_json: serde_json::Value = serde_json::from_str(&response_str).map_err(|e| e.to_string())?;
-        let candidates = response_json["candidates"].as_array().ok_or("Invalid response format")?;
+        let candidates = response_json["candidates"].as_array().ok_or("DInvalid response format")?;
         if candidates.is_empty() {
             return Err("No candidates found in response".to_string());
         }
         let first_candidate = &candidates[0];
-        let content = first_candidate["content"].as_object().ok_or("Invalid response format")?;
-        let parts = content["parts"].as_array().ok_or("Invalid response format")?;
+        let content = first_candidate["content"].as_object().ok_or("CInvalid response format")?;
+        let parts = content["parts"].as_array().ok_or("BInvalid response format")?;
         let last_end = parts.len() - 1;
         let last_part = &parts[last_end];
-        let text = last_part["text"].as_str().ok_or("Invalid response format")?;
-        let response_str = text.to_string(); 
-        
+        let text = last_part["text"].as_str().ok_or("AInvalid response format")?;
+
+        let text_objed = serde_json::from_str::<serde_json::Value>(text).map_err(|e| e.to_string())?;
+        let text = text_objed.as_array().ok_or("Invalid response format")?;
+        if text.is_empty() {
+            return Err("No text found in response".to_string());
+        }
+
+        let mut sub_items:&Vec<Value> = &vec![];
+        let content = text[text.len()-1].as_object().ok_or("1Invalid response format")?;
+        if content.get_key_value("subItems") != None  {
+          sub_items = content["subItems"].as_array().ok_or("2Invalid response format")?;
+        }
+        let sub_items: Vec<String> = sub_items.iter()
+            .filter_map(|item| item.as_str())
+            .map(|s| s.to_string())
+            .collect();
+        let discord_msg = content["discordMessage"].as_str().ok_or("3Invalid response format")?.to_string();
+
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
         let gemini_response = GeminiResponse {
-            content: response_str.clone(),
+            discord_msg,
+            sub_items,
             finish_reason,
             avg_logprobs,
         };

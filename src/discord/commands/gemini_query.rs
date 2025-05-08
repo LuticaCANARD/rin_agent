@@ -5,11 +5,12 @@ use serenity::all::ActivityData;
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
-use crate::gemini::gemini_client::GeminiClientTrait;
+use crate::gemini::gemini_client::{GeminiClientTrait, GeminiResponse};
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
 use crate::model::db::driver::{connect_to_db, DB_CONNECTION_POOL};
 use crate::utils::split_text::split_text_by_length_and_markdown;
+use crate::setting::gemini_setting::get_begin_query;
 
 use entity::tb_ai_context::{self, ActiveModel as AiContextModel};
 use entity::tb_ai_context::Entity as AiContextEntity;
@@ -36,34 +37,42 @@ fn user_mention(user: &User) -> String {
     format!("<@{}>\n", user.id.get())
 }
 
-async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,origin_msg:String,ref_msg:Option<Message>)->Vec<Message> {
+async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool)->Vec<Message> {
+    let origin_msg = message_context.discord_msg.clone();
     let mut send_msgs:Vec<Message> = vec![];
-    let mut called_user = false;
-    let chuncks = split_text_by_length_and_markdown(&origin_msg, 1950);
+    let chuncks: Vec<String> = split_text_by_length_and_markdown(&origin_msg, 1950);
     for chunk in 0..chuncks.len() {
-        let mut msg_last = String::new();
-        if called_user == false {
-            let strs =  user_mention(&origin_user)+ &chuncks.get(chunk).unwrap().clone();
-            
-            msg_last = strs.to_string();
-            called_user = true;
+        let msg_last = if need_mention_first == true && chunk == 0 {
+            user_mention(&origin_user) + &chuncks.get(chunk).unwrap().clone()
         } else {
-            msg_last = chuncks.get(chunk).unwrap().clone();
-        }
-        let mut response_msg = CreateMessage::new()
-            .content(msg_last);
-        
+            chuncks.get(chunk).unwrap().clone()
+        };
+        let mut response_msg: CreateMessage = CreateMessage::new()
+        .content(msg_last);
         if chunk == chuncks.len() - 1 {
-            let strs = &chuncks.get(chunk).unwrap().clone();
-            response_msg = generate_message_block(strs.to_string(),
-            "Gemini API".to_string(), "Gemini API".to_string(),
+            let mut sub_items = "Gemini API\n".to_string();
+            if message_context.sub_items.len() >0 {
+                
+                for sub_item in message_context.sub_items.iter() {
+                    sub_items.push_str(&format!("{}\n", sub_item));
+                }
+            }
+            let strs = if need_mention_first == true && chunk == 0 {  
+                user_mention(&origin_user) + &chuncks.get(chunk).unwrap().clone()
+            } else {
+                chuncks.get(chunk).unwrap().clone()
+            };
+            response_msg = generate_message_block(strs,
+            "Gemini API".to_string(), sub_items,
             chunk == chuncks.len() - 1);
         }
         if chunk == 0 {
             if let Some(ref ref_msg) = ref_msg {
+
                 response_msg = response_msg.reference_message(ref_msg);
             }
-        } 
+        }
+    
         send_msgs.push(channel_context.send_message(_ctx,response_msg).await.unwrap());
     }
     
@@ -82,7 +91,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
         
         ResolvedValue::String(ref s) => {
             let chatting_channel = _ctx.http.get_channel(_options.channel_id).await.unwrap();
-            let typing = chatting_channel.guild().unwrap().start_typing(&_ctx.http);
+            let typing: serenity::all::Typing = chatting_channel.guild().unwrap().start_typing(&_ctx.http);
 
             // Do something with the string value
             LOGGER.log(LogLevel::Debug, &format!("질문: {}", s));
@@ -92,14 +101,14 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
             let str_query = s.to_string();
             let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(vec![
+                get_begin_query(_options.locale.clone()),
                 str_query.clone()
             ]).await.unwrap();
-            let response = response.content;
-
-            LOGGER.log(LogLevel::Debug, &format!("Gemini 응답: {}", response));
-            let send_msgs:Vec<Message> = send_split_msg(_ctx, _options.channel_id, 
+            let send_msgs:Vec<Message> = send_split_msg(_ctx, 
+                _options.channel_id, 
                 _options.user.clone(),
-                response.clone(),None).await;
+                response.clone(),
+                None,true).await;
             typing.stop();
             let inserted_user_question = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
@@ -113,7 +122,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 
             let response_record = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
-                context: sea_orm::Set(response.clone()),
+                context: sea_orm::Set(response.discord_msg.clone()),
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 channel_id: sea_orm::Set(_options.channel_id.get() as i64),
 
@@ -124,7 +133,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let insert_user_and_bot_talk: Vec<tb_ai_context::Model> = AiContextEntity::insert_many(
                 vec![
                     inserted_user_question,
-                    
                 ]).add(response_record)
                 .exec_with_returning_many(&db)
                 .await
@@ -186,7 +194,7 @@ pub fn register() -> CreateCommand {
             )
 }
 
-pub async fn continue_query(_ctx: &Context,calling_msg:&Message) {
+pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     
 
     let channel_lock = _ctx.http.get_channel(calling_msg.channel_id).await.unwrap();
@@ -241,22 +249,36 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message) {
     .await
     .unwrap(); // 이 unwrap은 오류 발생 시 패닉을 유발하므로, 실제 코드에서는 .map_err 등으로 오류 처리를 해주시는 것이 좋습니다.
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
+
     let mut before_messages:Vec<String> = before_messages.iter().map(|x| x.context.clone()).collect();
-    
+
+    let user_locale = user.locale.clone();
+
+    if let Some(user_locale_open) = user_locale {
+        let begin_query = get_begin_query(user_locale_open);
+        before_messages.insert(0, begin_query);
+    } else {
+        let begin_query = get_begin_query("ko".to_string());
+        before_messages.insert(0, begin_query);
+
+    }
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
     let _push_query = before_messages.push(calling_msg.content.clone());
 
     let ai_response = GEMINI_CLIENT.lock().await
     .send_query_to_gemini(before_messages).await
     .unwrap();
-    
+
+
+
     // TODO : 분기처리.
 
     let send_msgs:Vec<Message> = send_split_msg(_ctx, 
         calling_msg.channel_id, 
         calling_msg.author.clone(),
-    ai_response.content.clone(), 
-    Some(calling_msg.clone())).await;
+        ai_response.clone(), 
+    Some(calling_msg.clone()),
+    false).await;
     typing.stop();
     let inserted = AiContextModel {
         user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
@@ -267,7 +289,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message) {
     };
     let response_record = AiContextModel {
         user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
-        context: sea_orm::Set(ai_response.content.clone()),
+        context: sea_orm::Set(ai_response.discord_msg.clone()),
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
         ..Default::default()

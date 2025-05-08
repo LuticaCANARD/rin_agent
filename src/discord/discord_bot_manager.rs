@@ -173,7 +173,7 @@ impl EventHandler for Handler {
                 if content.len() > 0 {
                     // Handle the query here
                     LOGGER.log(LogLevel::Info, &format!("Query found: {:?}", content));
-                    gemini_query::continue_query(&ctx, &msg).await;
+                    gemini_query::continue_query(&ctx, &msg,&msg.author).await;
                 }
             }
         }
