@@ -26,7 +26,9 @@ pub struct GeminiChatChunk {
     pub query: String,
     pub image: Option<GeminiImageInputType>,
     pub is_bot: bool,
+    pub user_id: Option<String>, 
 }
+
 
 pub struct GeminiClient {
     net_client: Client

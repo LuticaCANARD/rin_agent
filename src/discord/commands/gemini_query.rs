@@ -41,7 +41,8 @@ fn context_process(origin:&tb_ai_context::Model) -> GeminiChatChunk {
     GeminiChatChunk{
         query: origin.context.clone(),
         is_bot: origin.by_bot,
-        image: None
+        image: None,
+        user_id: Some(origin.user_id.to_string()),
     }
 }
 
@@ -113,7 +114,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 GeminiChatChunk{
                     query: str_query.clone(),
                     is_bot: false,
-                    image: None
+                    image: None,
+                    user_id: Some(_options.user.id.get().to_string()),
                 }
             ]).await;
             if response.is_err() {
@@ -312,6 +314,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let user_msg_current = GeminiChatChunk{
         query: calling_msg.content.clone(),
         is_bot: false,
+        user_id: Some(calling_msg.author.id.get().to_string()),
         image
     };
     let _push_query = before_messages.push(user_msg_current);

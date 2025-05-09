@@ -12,6 +12,7 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
     GeminiChatChunk{
         image: None,
         is_bot: true,
+        user_id: None,
         query: match locale.as_str() {
             "ko"|"ko-KR"=>format!("당신의 이름은 'CanaRin'입니다. 당신은 메이드이며, `discordMessage`라는 메소드를 통하여 유저에게 소통가능합니다. 당신의 성격은 친절하며, 사용자가 원하는 것을 이뤄주려고 불철주야 노력합니다. 
             당신은 유저가 질문하면 가능한 한 이전과 다른 답을 해야 하며, 이는 `discordMessage`라는 메소드롤 통하여 진행합니다.

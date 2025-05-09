@@ -209,7 +209,11 @@ impl EventHandler for Handler {
 
                         command.channel_id.send_message(ctx, 
                             CreateMessage::new().embed(
-                                make_message_embed("Gemini API Error", "Gemini API Error - Please contact the administrator: @lutica_canard").color(0xFF0000)
+                                make_message_embed("Gemini API Error", "Gemini API Error - Please contact the administrator: @lutica_canard")
+                                .footer(
+                                    CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
+                                )
+                                .color(0xFF0000)
                             )                         
                         ).await.unwrap();
                     } else if matches!(err, serenity::Error::Http(_)) {
