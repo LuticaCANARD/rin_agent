@@ -6,7 +6,7 @@ use tokio::sync::watch::{Receiver, Ref};
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::setting::gemini_setting::get_gemini_generate_config;
+use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL};
 
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
@@ -33,12 +33,7 @@ pub struct GeminiChatChunk {
 pub struct GeminiClient {
     net_client: Client
 }
-const GEMINI_MODEL : &str = if cfg!(not(debug_assertions)){
-    // 개발용인데 비용추계해보고 나서 결정하기
-    "gemini-2.5-pro"
-} else {
-    "gemini-2.0-flash"
-};
+
 
 pub trait GeminiClientTrait {
     fn new() -> Self;

@@ -10,7 +10,7 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
 use crate::model::db::driver::DB_CONNECTION_POOL;
 use crate::utils::split_text::split_text_by_length_and_markdown;
-use crate::setting::gemini_setting::get_begin_query;
+use crate::setting::gemini_setting::{get_begin_query, GEMINI_MODEL};
 
 use entity::tb_ai_context::{self, ActiveModel as AiContextModel};
 use entity::tb_ai_context::Entity as AiContextEntity;
@@ -73,7 +73,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
             };
             response_msg = generate_message_block(strs,
             "Gemini API".to_string(), sub_items,
-            "Gemini API".to_string(),chunk == chuncks.len() - 1);
+            GEMINI_MODEL.to_string(),chunk == chuncks.len() - 1);
         }
         if chunk == 0 {
             if let Some(ref ref_msg) = ref_msg {
@@ -238,6 +238,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
 
     if ai_context.len() == 0 {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
+        typing.stop();
         return;
     }
     LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context));
@@ -320,8 +321,12 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let _push_query = before_messages.push(user_msg_current);
 
     let ai_response = GEMINI_CLIENT.lock().await
-    .send_query_to_gemini(before_messages).await
-    .unwrap();
+    .send_query_to_gemini(before_messages).await;
+    if ai_response.is_err() {
+        typing.stop();
+        return;
+    }
+    let ai_response = ai_response.unwrap();
 
     let send_msgs:Vec<Message> = send_split_msg(_ctx, 
         calling_msg.channel_id, 
