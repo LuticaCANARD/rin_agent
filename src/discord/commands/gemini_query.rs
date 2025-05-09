@@ -21,7 +21,7 @@ use entity::tb_ai_context::Entity as AiContextEntity;
 use entity::tb_discord_ai_context::{ActiveModel as AiContextDiscordModel, Entity as AiContextDiscordEntity};
 use entity::tb_discord_message_to_at_context::{self, ActiveModel as AiContextDiscordMessageModel, Column as TbDiscordMessageToAtContext, Entity as AiContextDiscordMessageEntity};
 
-fn generate_message_block(box_msg: String, title:String , description:String,need_emded:bool ) -> CreateMessage{
+fn generate_message_block(box_msg: String, title:String , description:String,footer:String,need_emded:bool) -> CreateMessage{
     let msg = CreateMessage::new()                
     .content( box_msg);
     if need_emded {
@@ -30,7 +30,7 @@ fn generate_message_block(box_msg: String, title:String , description:String,nee
                 .title(title)
                 .description(description)
                 .color(0x00FF00) // Green color
-                .footer(CreateEmbedFooter::new("Gemini API"))
+                .footer(CreateEmbedFooter::new(footer))
         )
     } else {
         msg
@@ -62,7 +62,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
         let mut response_msg: CreateMessage = CreateMessage::new()
         .content(msg_last);
         if chunk == chuncks.len() - 1 {
-            let mut sub_items = "Gemini API\n".to_string();
+            let mut sub_items = String::new();
             if message_context.sub_items.len() >0 {
                 
                 for sub_item in message_context.sub_items.iter() {
@@ -76,7 +76,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
             };
             response_msg = generate_message_block(strs,
             "Gemini API".to_string(), sub_items,
-            chunk == chuncks.len() - 1);
+            "Gemini API".to_string(),chunk == chuncks.len() - 1);
         }
         if chunk == 0 {
             if let Some(ref ref_msg) = ref_msg {
@@ -113,11 +113,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
             let str_query = s.to_string();
             let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(vec![
-                GeminiChatChunk{
-                    query: get_begin_query(_options.locale.clone(), _options.user.clone()),
-                    is_bot: true,
-                    image: None
-                },
+                get_begin_query(_options.locale.clone(), _options.user.clone()),
                 GeminiChatChunk{
                     query: str_query.clone(),
                     is_bot: false,
@@ -275,10 +271,10 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
 
     if let Some(user_locale_open) = user_locale {
         let begin_query = get_begin_query(user_locale_open, user.clone());
-        before_messages.insert(0, GeminiChatChunk { query: begin_query, is_bot: false,image: None });
+        before_messages.insert(0, begin_query);
     } else {
         let begin_query = get_begin_query("ko".to_string(), user.clone());
-        before_messages.insert(0, GeminiChatChunk { query: begin_query, is_bot: false,image: None });
+        before_messages.insert(0, begin_query);
 
     }
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
