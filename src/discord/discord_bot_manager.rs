@@ -64,19 +64,28 @@ macro_rules! get_command_function {
         }
     };
 }
+macro_rules! define_lazy_static {
+    ($commands:ident, $activate_commands:ident, [$($module:ident),*]) => {
+        static $commands: LazyLock<Vec<CreateCommand>> = LazyLock::new(|| {
+            register_commands_module! {
+                $($module),*
+            }
+        });
 
-static USING_COMMANDS: LazyLock<Vec<CreateCommand>> = LazyLock::new(|| {
-    register_commands_module!{
+        static $activate_commands: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> Pin<Box<dyn Future<Output = Result<String, serenity::Error>> + Send>> + Send + Sync>> = LazyLock::new(|| {
+            Box::new(get_command_function! {
+                $($module),*
+            })
+        });
+    };
+}
+
+define_lazy_static!(USING_COMMANDS, USING_ACTIVATE_COMMANDS, 
+    [
         ping,
         gemini_query
-    }
-});
-
-static USING_ACTIVATE_COMMANDS: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> Pin<Box<dyn Future<Output = Result<String,serenity::Error>> + Send>> + Send + Sync>> = LazyLock::new(|| {
-    Box::new(get_command_function!(
-        ping,
-        gemini_query))
-});
+    ]
+);
 
 
 
@@ -197,7 +206,6 @@ impl EventHandler for Handler {
         match interaction {
             Interaction::Command(command) => {
                 let command_name = command.data.name.clone();
-                println!("Received command: {}", command_name);
                 // Handle the command here
                 // For example, you can call a function to process the command
                 // and send a response back to the user.

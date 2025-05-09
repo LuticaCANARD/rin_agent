@@ -1,3 +1,5 @@
+use std::env;
+
 use serde_json::json;
 use serenity::all::User;
 
@@ -8,7 +10,7 @@ use crate::gemini::gemini_client::GeminiChatChunk;
 pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
     let userid = user_option.id.to_string();
     //let pronance = user_option.member.as_ref().unwrap().nick.as_ref().unwrap_or(&userid);
-
+    let discord_bot_id = env::var("DISCORD_CLIENT_ID").unwrap_or_default();
     GeminiChatChunk{
         image: None,
         is_bot: true,
@@ -68,6 +70,6 @@ pub fn get_gemini_generate_config() -> serde_json::Value {
                 }
             },
             "temperature": 1.5,
-            "topP": 0.97,
+            "topP": 0.965,
     })
 }

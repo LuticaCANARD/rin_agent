@@ -30,7 +30,7 @@ impl Logger {
             LogLevel::Error => (self.log_fn)(message, LogLevel::Error),
             LogLevel::Warning => (self.log_fn)(message, LogLevel::Warning),
             LogLevel::Info => (self.log_fn)(message, LogLevel::Info),
-            LogLevel::Debug => if cfg!(not(debug_assertions)) {
+            LogLevel::Debug => if cfg!(debug_assertions) {
                 (self.log_fn)(message, LogLevel::Debug)
             },
         }
