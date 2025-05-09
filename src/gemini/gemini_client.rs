@@ -33,6 +33,12 @@ pub struct GeminiChatChunk {
 pub struct GeminiClient {
     net_client: Client
 }
+const GEMINI_MODEL : &str = if cfg!(not(debug_assertions)){
+    // 개발용인데 비용추계해보고 나서 결정하기
+    "gemini-2.5-pro"
+} else {
+    "gemini-2.0-flash"
+};
 
 pub trait GeminiClientTrait {
     fn new() -> Self;
@@ -107,8 +113,10 @@ impl GeminiClientTrait for GeminiClient {
 
     async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
+        
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            GEMINI_MODEL,
             api_key
         );
         let objected_query = self.generate_to_gemini_query(query);
