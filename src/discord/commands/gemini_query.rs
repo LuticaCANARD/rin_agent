@@ -5,6 +5,7 @@ use sea_orm::{Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySe
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
+use sqlx::types::chrono;
 use crate::gemini::gemini_client::{GeminiChatChunk, GeminiClientTrait, GeminiImageInputType, GeminiResponse};
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
@@ -41,6 +42,7 @@ fn context_process(origin:&tb_ai_context::Model) -> GeminiChatChunk {
     GeminiChatChunk{
         query: origin.context.clone(),
         is_bot: origin.by_bot,
+        timestamp: origin.created_at.to_utc().to_string(),
         image: None,
         user_id: Some(origin.user_id.to_string()),
     }
@@ -125,6 +127,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                     query: str_query.clone(),
                     is_bot: false,
                     image: None,
+                    timestamp: chrono::Utc::now().to_string(),
                     user_id: Some(_options.user.id.get().to_string()),
                 }
             ],use_pro).await;
@@ -351,6 +354,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         query: calling_msg.content.clone(),
         is_bot: false,
         user_id: Some(calling_msg.author.id.get().to_string()),
+        timestamp: calling_msg.timestamp.to_string(),
         image
     };
     let _push_query = before_messages.push(user_msg_current);

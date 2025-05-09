@@ -1,9 +1,7 @@
 use std::env;
-use std::ops::Deref;
+
 use reqwest::Client;
 use serde_json::{json, Value};
-use tokio::sync::watch::{Receiver, Ref};
-use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
@@ -26,6 +24,7 @@ pub struct GeminiChatChunk {
     pub query: String,
     pub image: Option<GeminiImageInputType>,
     pub is_bot: bool,
+    pub timestamp: String,
     pub user_id: Option<String>, 
 }
 
@@ -34,6 +33,15 @@ pub struct GeminiClient {
     net_client: Client
 }
 
+
+fn generate_gemini_string_from_chunk(chunk: &GeminiChatChunk) -> String {
+    format!("
+    time : {} 
+    sender : {}
+    message : {}
+    ",&chunk.timestamp,if !chunk.is_bot {chunk.user_id.clone().unwrap()} else {String::from("0")}, chunk.query
+    ).to_string()
+}
 
 pub trait GeminiClientTrait {
     fn new() -> Self;
@@ -44,13 +52,13 @@ pub trait GeminiClientTrait {
                 query.iter().map(|chunk| {
                 if chunk.image.is_none() {
                     json!({
-                        "role" : if chunk.is_bot {"model" } else {"user"},
-                        "parts": [{ "text": chunk.query,}]
+                        "role" : if chunk.is_bot {"model"} else {"user"},
+                        "parts": [{ "text": generate_gemini_string_from_chunk(chunk),}]
                     })
                 } else {
                     json!({
                         "role" : if chunk.is_bot {"model"} else {"user"},
-                        "parts": [{"text": chunk.query},
+                        "parts": [{"text": generate_gemini_string_from_chunk(chunk)},
                             {
                                 "inline_data": {
                                     "mime_type": chunk.image.as_ref().map(|img| img.mime_type.clone()).unwrap_or_default(),
@@ -145,13 +153,18 @@ impl GeminiClientTrait for GeminiClient {
         let mut sub_items:&Vec<Value> = &vec![];
         let content = text[text.len()-1].as_object().ok_or("1Invalid response format")?;
         if content.get_key_value("subItems") != None  {
-          sub_items = content["subItems"].as_array().ok_or("2Invalid response format")?;
+            sub_items = content["subItems"].as_array().ok_or("2Invalid response format")?;
         }
         let sub_items: Vec<String> = sub_items.iter()
             .filter_map(|item| item.as_str())
             .map(|s| s.to_string())
             .collect();
-        let discord_msg = content["discordMessage"].as_str().ok_or("3Invalid response format")?.to_string();
+        let discord_msg = content.get_key_value("discordMessage");
+        if discord_msg == None {
+            LOGGER.log(LogLevel::Error, "Gemini API > No discordMessage found in response");
+            return Err("No discordMessage found in response".to_string());
+        }
+        let discord_msg = discord_msg.unwrap().1.as_str().ok_or("Invalid discordMessage format")?.to_string();
 
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
