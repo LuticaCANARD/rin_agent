@@ -6,7 +6,7 @@ use tokio::sync::watch::{Receiver, Ref};
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL};
+use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
 
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
@@ -111,7 +111,7 @@ impl GeminiClientTrait for GeminiClient {
         
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            GEMINI_MODEL,
+            if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH},
             api_key
         );
         let objected_query = self.generate_to_gemini_query(query);

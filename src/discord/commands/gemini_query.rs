@@ -1,7 +1,7 @@
 use base64::Engine;
 use sea_orm::prelude::Expr;
-use sea_orm::sea_query::{Alias, ExprTrait};
-use sea_orm::{ColIdx, Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::sea_query::Alias;
+use sea_orm::{Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect};
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
@@ -10,11 +10,11 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
 use crate::model::db::driver::DB_CONNECTION_POOL;
 use crate::utils::split_text::split_text_by_length_and_markdown;
-use crate::setting::gemini_setting::{get_begin_query, GEMINI_MODEL};
+use crate::setting::gemini_setting::{get_begin_query, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
 
 use entity::tb_ai_context::{self, ActiveModel as AiContextModel};
 use entity::tb_ai_context::Entity as AiContextEntity;
-use entity::tb_discord_ai_context::{ActiveModel as AiContextDiscordModel, Entity as AiContextDiscordEntity};
+use entity::tb_discord_ai_context::{self, ActiveModel as AiContextDiscordModel, Entity as AiContextDiscordEntity};
 use entity::tb_discord_message_to_at_context::{self, ActiveModel as AiContextDiscordMessageModel, Column as TbDiscordMessageToAtContext, Entity as AiContextDiscordMessageEntity};
 
 fn generate_message_block(box_msg: String, title:String , description:String,footer:String,need_emded:bool) -> CreateMessage{
@@ -46,7 +46,7 @@ fn context_process(origin:&tb_ai_context::Model) -> GeminiChatChunk {
     }
 }
 
-async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool)->Vec<Message> {
+async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool,use_pro:bool)->Vec<Message> {
     let origin_msg = message_context.discord_msg.clone();
     let mut send_msgs:Vec<Message> = vec![];
     let chuncks: Vec<String> = split_text_by_length_and_markdown(&origin_msg, 1950);
@@ -73,7 +73,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
             };
             response_msg = generate_message_block(strs,
             "Gemini API".to_string(), sub_items,
-            GEMINI_MODEL.to_string(),chunk == chuncks.len() - 1);
+            if use_pro {GEMINI_MODEL_PRO.to_string()} else {GEMINI_MODEL_FLASH.to_string()},chunk == chuncks.len() - 1);
         }
         if chunk == 0 {
             if let Some(ref ref_msg) = ref_msg {
@@ -91,6 +91,16 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
 pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String, serenity::Error> {
     let options = _options.data.options();
     let query = options.iter().find(|o| o.name == "query");
+    let use_pro = options.iter().find(|o| o.name == "use_pro");
+    let use_pro = if use_pro.is_some() {
+        let unwarped = use_pro.unwrap().value.clone();
+        match unwarped {
+            ResolvedValue::Boolean(s) => s,
+            _ => false,
+        }
+    } else {
+        false
+    };
     if query.is_none() {
         _options.create_response(_ctx,CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("질문을 입력하세요"))).await?;
         return Ok("질문을 입력하세요".to_string());
@@ -117,7 +127,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                     image: None,
                     user_id: Some(_options.user.id.get().to_string()),
                 }
-            ],false).await;
+            ],use_pro).await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
                 return Err(SerenityError::Other("Gemini API Error"));
@@ -127,7 +137,9 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 _options.channel_id, 
                 _options.user.clone(),
                 response.clone(),
-                None,true).await;
+                None,true,
+                use_pro
+            ).await;
             typing.stop();
             let inserted_user_question = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
@@ -162,6 +174,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
                 parent_context: sea_orm::Set(None),
+                using_pro_model: sea_orm::Set(use_pro),
                 ..Default::default()
             })
             .exec_with_returning(&db)
@@ -211,11 +224,16 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(CommandOptionType::String, "query", "질문할 내용을 입력하세요")
                 .required(true)
             )
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::Boolean,
+            "use_pro",
+            "Gemini Pro 모델을 사용할지 선택하세요",
+        )
+        .required(false)
+        )
 }
 
 pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
-    
-
     let channel_lock = _ctx.http.get_channel(calling_msg.channel_id).await.unwrap();
     let typing = channel_lock.guild().unwrap().start_typing(&_ctx.http);
     let db = DB_CONNECTION_POOL.get().unwrap().clone();
@@ -267,6 +285,23 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .unwrap();
 
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
+
+    let context_using_pro = AiContextDiscordEntity::find()
+    .filter(
+        Condition::all()
+            .add(
+                Expr::col(tb_discord_ai_context::Column::Id)
+                .is_in(ai_contexts.clone())
+            )
+    ).one(&db)
+    .await
+    .unwrap();
+    let context_using_pro = if context_using_pro.is_some() {
+        context_using_pro.unwrap().using_pro_model
+    } else {
+        false
+    };
+
 
     let mut before_messages:Vec<GeminiChatChunk> = before_messages.iter().map(context_process).collect();
 
@@ -321,7 +356,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let _push_query = before_messages.push(user_msg_current);
 
     let ai_response = GEMINI_CLIENT.lock().await
-    .send_query_to_gemini(before_messages,false).await;
+    .send_query_to_gemini(before_messages,context_using_pro).await;
     if ai_response.is_err() {
         typing.stop();
         return;
@@ -332,8 +367,10 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         calling_msg.channel_id, 
         calling_msg.author.clone(),
         ai_response.clone(), 
-    Some(calling_msg.clone()),
-    false).await;
+        Some(calling_msg.clone()),
+        false,
+        context_using_pro
+    ).await;
     typing.stop();
     let inserted = AiContextModel {
         user_id: sea_orm::Set(calling_msg.author.id.get() as i64),

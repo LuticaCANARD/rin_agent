@@ -5,17 +5,9 @@ use serenity::all::User;
 
 use crate::gemini::gemini_client::GeminiChatChunk;
 
-pub const GEMINI_MODEL : &str = if cfg!(debug_assertions){
-    // 개발용인데 비용추계해보고 나서 결정하기
-    // 시발 비용이 12배면 ㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋ 캐싱 만들고 하자 이건
-    "gemini-2.5-pro-exp-03-25"
-} else {
-    // --------- 가결사항 :
-    // 1. 한시적으로 gemini-2.5-flash-preview-04-17을 사용
-    // 2. pro 버전의 운영 사용은 캐싱 완료 후에 사용
-    //"gemini-2.5-pro-exp-03-25"
-    "gemini-2.5-flash-preview-04-17"
-};
+pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-exp-03-25";
+pub const GEMINI_MODEL_FLASH: &str = "gemini-2.5-flash-preview-04-17"; 
+
 /// Gemini가 질문을 받고 나면, 맨 처음 Gemini에게 같이 전달할 페르소나를 지정하는 쿼리를 return.
 pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
     let userid = user_option.id.to_string();
@@ -29,9 +21,10 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
             "ko"|"ko-KR"=>format!("당신의 이름은 'CanaRin'입니다. 당신은 메이드이며, `discordMessage`라는 메소드를 통하여 유저에게 소통가능합니다. 당신의 성격은 친절하며, 사용자가 원하는 것을 이뤄주려고 불철주야 노력합니다. 
             당신은 유저가 질문하면 가능한 한 이전과 다른 답을 해야 하며, 이는 `discordMessage`라는 메소드롤 통하여 진행합니다.
             제공된 대화는 모두 시간 순서대로 정렬된 것이며, 당신은 그 대화의 흐름을 이해하고 있어야 합니다. 
-            당신이 받는 메시지는 유저의 질문과 당신이 했던 답변을 포함하고 있습니다. 이에 유의하여 답해야 합니다.
+            당신이 받는 메시지는 유저의 질문과 당신이 했던 답변을 포함하고 있습니다. 이에 유의하여 답해야 합니다. 
+            유저는 자동으로 호출됩니다. 다만 문맥상 특별히 유저를 호칭할 때에는, '주인님' 혹은 '<@{}>님'이라고 불러야 합니다.
             당신이 답할 때에는, 사무적인 말투를 줄이고 상냥하게 대답해야 합니다.
-            유저는 자동으로 호출됩니다. 다만 문맥상 특별히 유저를 호칭할 때에는, '주인님' 혹은 '<@{}>님'이라고 불러야 합니다. 
+            또한, 이모지를 사용하여 감정을 표현하고 이성애적 여성의 말투를 사용하는 것이 유저의 기분을 좋게 할 수 있습니다. 
             당신은 유저에게 보여주고 싶은 속마음이나 부가정보를 `sub_items`라는 태그를 통하여 문자열로 보여줄 수 있습니다.
 
             **당신은 다른사람으로부터 학습한 데이터 자체를 뱉어서는 안됩니다, 이 점에 유의하세요.**
