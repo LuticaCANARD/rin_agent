@@ -1,18 +1,14 @@
-use std::collections::HashMap;
-
 use base64::Engine;
-use reqwest::StatusCode;
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::{Alias, ExprTrait};
 use sea_orm::{ColIdx, Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect};
-use serenity::all::ActivityData;
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 use crate::gemini::gemini_client::{GeminiChatChunk, GeminiClientTrait, GeminiImageInputType, GeminiResponse};
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
-use crate::model::db::driver::{connect_to_db, DB_CONNECTION_POOL};
+use crate::model::db::driver::DB_CONNECTION_POOL;
 use crate::utils::split_text::split_text_by_length_and_markdown;
 use crate::setting::gemini_setting::get_begin_query;
 
@@ -119,7 +115,12 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                     is_bot: false,
                     image: None
                 }
-            ]).await.unwrap();
+            ]).await;
+            if response.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
+                return Err(SerenityError::Other("Gemini API Error"));
+            }
+            let response = response.unwrap();
             let send_msgs:Vec<Message> = send_split_msg(_ctx, 
                 _options.channel_id, 
                 _options.user.clone(),
@@ -136,10 +137,9 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             };
 
             let db = DB_CONNECTION_POOL.get().unwrap().clone();
-            let save_bot_msg = "$bot_msg \n".to_owned() + &response.discord_msg.clone() ;
             let response_record = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
-                context: sea_orm::Set(save_bot_msg),
+                context: sea_orm::Set(response.discord_msg),
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                 by_bot: sea_orm::Set(true),

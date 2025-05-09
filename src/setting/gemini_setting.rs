@@ -66,6 +66,7 @@ pub fn get_gemini_generate_config() -> serde_json::Value {
                     "propertyOrdering": ["discordMessage", "subItems"]
                 }
             },
-            "temperature": 1.0
+            "temperature": 1.5,
+            "topP": 0.97,
     })
 }

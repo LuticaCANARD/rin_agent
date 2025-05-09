@@ -1,4 +1,9 @@
 use serenity::all::CreateCommand;
+use serenity::all::CreateEmbed;
+use serenity::all::CreateEmbedFooter;
+use serenity::all::CreateInteractionResponse;
+use serenity::all::CreateInteractionResponseMessage;
+use serenity::all::CreateMessage;
 use serenity::all::Guild;
 use serenity::all::GuildId;
 use serenity::all::UnavailableGuild;
@@ -8,6 +13,7 @@ use serenity::async_trait;
 use serenity::model::gateway::Ready;
 use serenity::model::gateway::GatewayIntents;
 use serenity::model::application::{Command, Interaction};
+use sqlx::types::chrono;
 
 use std::env;
 use serenity::model::prelude::*;
@@ -42,15 +48,16 @@ macro_rules! get_command_function {
                         stringify!($module) => {
                             if let Err(err) = crate::discord::commands::$module::run(&context, &interaction).await {
                                 LOGGER.log(LogLevel::Error, &format!("Discord > Error executing command {}: {:?}", stringify!($module), err));
+                                return Err(err);
                             }
                             let response = format!("Discord > Command {} executed successfully!", stringify!($module));
                             LOGGER.log(LogLevel::Info, &response);
-                            response
+                            Ok(response)
                         }
                     )*
                     _ => {
                         LOGGER.log(LogLevel::Error, &format!("Discord > Unknown command: {}", name));
-                        "Unknown command".to_string()
+                        Ok("Unknown command".to_string())
                     }
                 }
             })
@@ -65,7 +72,7 @@ static USING_COMMANDS: LazyLock<Vec<CreateCommand>> = LazyLock::new(|| {
     }
 });
 
-static USING_ACTIVATE_COMMANDS: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> Pin<Box<dyn Future<Output = String> + Send>> + Send + Sync>> = LazyLock::new(|| {
+static USING_ACTIVATE_COMMANDS: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> Pin<Box<dyn Future<Output = Result<String,serenity::Error>> + Send>> + Send + Sync>> = LazyLock::new(|| {
     Box::new(get_command_function!(
         ping,
         gemini_query))
@@ -75,6 +82,12 @@ static USING_ACTIVATE_COMMANDS: LazyLock<Box<dyn Fn(String, &Context, &CommandIn
 
 
 static CLIENT_ID: LazyLock<Option<UserId>> = LazyLock::new(|| (std::env::var("DISCORD_CLIENT_ID").ok()).and_then(|id| id.parse::<u64>().ok()).map(UserId::new));
+
+fn make_message_embed(title: &str, description: &str) -> CreateEmbed {
+    CreateEmbed::new()
+        .title(title)
+        .description(description)
+}
 
 async fn register_commands(ctx: Context, guild_id: GuildId) {
     // Register commands here
@@ -189,9 +202,33 @@ impl EventHandler for Handler {
                 // For example, you can call a function to process the command
                 // and send a response back to the user.
                 let command_future = &USING_ACTIVATE_COMMANDS;
-            
-                // 클로저 호출 후 `.await`
-                let _ = command_future(command_name, &ctx, &command).await;
+
+                if let Err(err) = command_future(command_name.clone(), &ctx, &command).await {
+                    LOGGER.log(LogLevel::Error, &format!("Discord > Error executing command {}: {:?}", command_name, err));
+                    if matches!(err, serenity::Error::Other("Gemini API Error")) {
+
+                        command.channel_id.send_message(ctx, 
+                            CreateMessage::new().embed(
+                                make_message_embed("Gemini API Error", "Gemini API Error - Please contact the administrator: @lutica_canard").color(0xFF0000)
+                            )                         
+                        ).await.unwrap();
+                    } else if matches!(err, serenity::Error::Http(_)) {
+                        command.channel_id.send_message(ctx, 
+                            CreateMessage::new().embed(
+                                make_message_embed("HTTP Error", "HTTP Error - Please contact the administrator: @lutica_canard").color(0xFF0000).footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+                            )                         
+                        ).await.unwrap();
+                    } else {
+                        command.create_response(ctx, 
+                            CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                            .content("General Discord Bot Error")
+                            .add_embed(
+                                make_message_embed("Discord Bot Error", "General Discord Bot Error - Please contact the administrator: @lutica_canard").color(0xFF0000)
+                            )
+                    )).await.unwrap();
+                    }
+                    return;
+                }
 
             }
             Interaction::Ping(ping) =>{
