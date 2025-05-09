@@ -1,6 +1,6 @@
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::{Alias, ExprTrait};
-use sea_orm::{ColIdx, Condition, EntityTrait, JoinType, QueryFilter, QuerySelect};
+use sea_orm::{ColIdx, Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect};
 use serenity::all::ActivityData;
 use serenity::builder::*;
 use serenity::model::prelude::*;
@@ -35,6 +35,14 @@ fn generate_message_block(box_msg: String, title:String , description:String,nee
 
 fn user_mention(user: &User) -> String {
     format!("<@{}>\n", user.id.get())
+}
+
+fn context_process(origin:&tb_ai_context::Model) -> String {
+    let mut context = origin.context.clone();
+    if origin.by_bot == true {
+        context = "$bot_msg\n".to_string() + &context;
+    }
+    context
 }
 
 async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool)->Vec<Message> {
@@ -101,7 +109,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
             let str_query = s.to_string();
             let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(vec![
-                get_begin_query(_options.locale.clone()),
+                get_begin_query(_options.locale.clone(), _options.user.clone()),
                 str_query.clone()
             ]).await.unwrap();
             let send_msgs:Vec<Message> = send_split_msg(_ctx, 
@@ -115,17 +123,18 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 context: sea_orm::Set(str_query),
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 channel_id: sea_orm::Set(_options.channel_id.get() as i64),
+                by_bot: sea_orm::Set(false),
                 ..Default::default()
             };
 
             let db = DB_CONNECTION_POOL.get().unwrap().clone();
-
+            let save_bot_msg = "$bot_msg \n".to_owned() + &response.discord_msg.clone() ;
             let response_record = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
-                context: sea_orm::Set(response.discord_msg.clone()),
+                context: sea_orm::Set(save_bot_msg),
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 channel_id: sea_orm::Set(_options.channel_id.get() as i64),
-
+                by_bot: sea_orm::Set(true),
                 ..Default::default()
             };
 
@@ -199,11 +208,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
 
     let channel_lock = _ctx.http.get_channel(calling_msg.channel_id).await.unwrap();
     let typing = channel_lock.guild().unwrap().start_typing(&_ctx.http);
-
-
     let db = DB_CONNECTION_POOL.get().unwrap().clone();
-    
-    
     LOGGER.log(LogLevel::Debug, &format!("DB Connection: {:?}", db));
     let msg_ref_id = calling_msg.referenced_message.clone().unwrap().id.get() as i64;
     LOGGER.log(LogLevel::Debug, &format!("msg_ref_id: {:?}", msg_ref_id));
@@ -245,20 +250,22 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>()
         ),
     )
+    .order_by(tb_ai_context::Column::Id, sea_orm::Order::Asc)
     .all(&db)
     .await
-    .unwrap(); // 이 unwrap은 오류 발생 시 패닉을 유발하므로, 실제 코드에서는 .map_err 등으로 오류 처리를 해주시는 것이 좋습니다.
+    .unwrap();
+
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
 
-    let mut before_messages:Vec<String> = before_messages.iter().map(|x| x.context.clone()).collect();
+    let mut before_messages:Vec<String> = before_messages.iter().map(context_process).collect();
 
     let user_locale = user.locale.clone();
 
     if let Some(user_locale_open) = user_locale {
-        let begin_query = get_begin_query(user_locale_open);
+        let begin_query = get_begin_query(user_locale_open, user.clone());
         before_messages.insert(0, begin_query);
     } else {
-        let begin_query = get_begin_query("ko".to_string());
+        let begin_query = get_begin_query("ko".to_string(), user.clone());
         before_messages.insert(0, begin_query);
 
     }
@@ -268,10 +275,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let ai_response = GEMINI_CLIENT.lock().await
     .send_query_to_gemini(before_messages).await
     .unwrap();
-
-
-
-    // TODO : 분기처리.
 
     let send_msgs:Vec<Message> = send_split_msg(_ctx, 
         calling_msg.channel_id, 
@@ -285,6 +288,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         context: sea_orm::Set(calling_msg.content.clone()),
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
+        by_bot: sea_orm::Set(false),
         ..Default::default()
     };
     let response_record = AiContextModel {
@@ -292,6 +296,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         context: sea_orm::Set(ai_response.discord_msg.clone()),
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
+        by_bot: sea_orm::Set(true),
         ..Default::default()
     };
     let _insert_context_desc = AiContextEntity::insert(inserted)
@@ -313,7 +318,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let ai_context_discord_messages = send_msgs.iter().map(|msg| {
         AiContextDiscordMessageModel {
             discord_message: sea_orm::Set(msg.id.get() as i64),
-            ai_context_id: sea_orm::Set( continue_context ),
+            ai_context_id: sea_orm::Set(continue_context),
             ai_msg_id: sea_orm::Set(_insert_context_desc[1].id),
             ..Default::default()
         }

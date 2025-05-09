@@ -94,6 +94,7 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
                 }
             }
         );
+        LOGGER.log(LogLevel::Debug, &format!("Gemini > Request: {:?}", query));
         let objected_query = json!({
             "contents": [
                 {

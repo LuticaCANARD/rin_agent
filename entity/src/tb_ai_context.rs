@@ -14,6 +14,7 @@ pub struct Model {
     pub updated_at: DateTime,
     pub guild_id: i64,
     pub channel_id: i64,
+    pub by_bot: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
