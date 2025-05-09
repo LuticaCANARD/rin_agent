@@ -7,13 +7,14 @@ use crate::gemini::gemini_client::GeminiChatChunk;
 
 pub const GEMINI_MODEL : &str = if cfg!(debug_assertions){
     // 개발용인데 비용추계해보고 나서 결정하기
-    // https://ai.google.dev/gemini-api/docs/pricing?hl=ko
     // 시발 비용이 12배면 ㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋ 캐싱 만들고 하자 이건
     "gemini-2.5-pro-exp-03-25"
-    //"gemini-2.5-flash-preview-04-17"
 } else {
-    "gemini-2.5-pro-exp-03-25"
-    //"gemini-2.5-flash-preview-04-17"
+    // --------- 가결사항 :
+    // 1. 한시적으로 gemini-2.5-flash-preview-04-17을 사용
+    // 2. pro 버전의 운영 사용은 캐싱 완료 후에 사용
+    //"gemini-2.5-pro-exp-03-25"
+    "gemini-2.5-flash-preview-04-17"
 };
 /// Gemini가 질문을 받고 나면, 맨 처음 Gemini에게 같이 전달할 페르소나를 지정하는 쿼리를 return.
 pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
