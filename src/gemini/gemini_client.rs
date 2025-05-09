@@ -37,7 +37,7 @@ pub struct GeminiClient {
 
 pub trait GeminiClientTrait {
     fn new() -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>) -> Result<GeminiResponse, String>;
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,use_pro:bool) -> Result<GeminiResponse, String>;
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>) -> serde_json::Value {
         json!({
             "contents": [
@@ -106,7 +106,7 @@ impl GeminiClientTrait for GeminiClient {
 * 
 */
 
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>) -> Result<GeminiResponse, String> {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,use_pro:bool) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
         let url = format!(
