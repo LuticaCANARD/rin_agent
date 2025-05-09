@@ -7,16 +7,7 @@ use tokio::sync::Mutex;
 pub mod gemini_client;
 
 lazy_static!{
-    pub static ref GEMINI_CLIENT: Mutex<gemini_client::GeminiClient<'static, DiscordToGeminiMessage<String>>> = Mutex::new(
-        gemini_client::GeminiClient::new(
-            &DISCORD_TO_GEMINI_PIPELINE,
-            move |message: DiscordToGeminiMessage<String>| {
-                let msg = message.message.clone();
-                let querys: Vec<String> = vec![
-                    msg.clone(),
-                ];
-                querys
-            },
-        )
+    pub static ref GEMINI_CLIENT: Mutex<gemini_client::GeminiClient> = Mutex::new(
+        gemini_client::GeminiClient::new()
     ) ; 
 }

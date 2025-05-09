@@ -1,3 +1,4 @@
+use serde_json::json;
 use serenity::all::User;
 
 
@@ -33,4 +34,25 @@ pub fn get_begin_query(locale:String,user_option:User) -> String{
         You can include any subtext or additional information you want to show the user as a string via the `sub_items` tag.
         ",userid).to_string(),
     }
+}
+pub fn get_gemini_generate_config() -> serde_json::Value {
+    // Gemini에게 질문을 보낼 때, 어떤 형식으로 질문을 보낼지에 대한 설정을 return
+    json!({
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "discordMessage": { "type": "STRING" },
+                        "subItems": {
+                            "type": "ARRAY",
+                            "items": { "type": "STRING" }
+                        }
+                    },
+                    "propertyOrdering": ["discordMessage", "subItems"]
+                }
+            },
+            "temperature": 1.0
+    })
 }

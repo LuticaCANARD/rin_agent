@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use base64::Engine;
+use reqwest::StatusCode;
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::{Alias, ExprTrait};
 use sea_orm::{ColIdx, Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect};
@@ -5,7 +9,7 @@ use serenity::all::ActivityData;
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
-use crate::gemini::gemini_client::{GeminiClientTrait, GeminiResponse};
+use crate::gemini::gemini_client::{GeminiChatChunk, GeminiClientTrait, GeminiImageInputType, GeminiResponse};
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
 use crate::model::db::driver::{connect_to_db, DB_CONNECTION_POOL};
@@ -37,12 +41,12 @@ fn user_mention(user: &User) -> String {
     format!("<@{}>\n", user.id.get())
 }
 
-fn context_process(origin:&tb_ai_context::Model) -> String {
-    let mut context = origin.context.clone();
-    if origin.by_bot == true {
-        context = "$bot_msg\n".to_string() + &context;
+fn context_process(origin:&tb_ai_context::Model) -> GeminiChatChunk {
+    GeminiChatChunk{
+        query: origin.context.clone(),
+        is_bot: origin.by_bot,
+        image: None
     }
-    context
 }
 
 async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool)->Vec<Message> {
@@ -109,8 +113,16 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
             let str_query = s.to_string();
             let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(vec![
-                get_begin_query(_options.locale.clone(), _options.user.clone()),
-                str_query.clone()
+                GeminiChatChunk{
+                    query: get_begin_query(_options.locale.clone(), _options.user.clone()),
+                    is_bot: true,
+                    image: None
+                },
+                GeminiChatChunk{
+                    query: str_query.clone(),
+                    is_bot: false,
+                    image: None
+                }
             ]).await.unwrap();
             let send_msgs:Vec<Message> = send_split_msg(_ctx, 
                 _options.channel_id, 
@@ -257,20 +269,56 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
 
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
 
-    let mut before_messages:Vec<String> = before_messages.iter().map(context_process).collect();
+    let mut before_messages:Vec<GeminiChatChunk> = before_messages.iter().map(context_process).collect();
 
     let user_locale = user.locale.clone();
 
     if let Some(user_locale_open) = user_locale {
         let begin_query = get_begin_query(user_locale_open, user.clone());
-        before_messages.insert(0, begin_query);
+        before_messages.insert(0, GeminiChatChunk { query: begin_query, is_bot: false,image: None });
     } else {
         let begin_query = get_begin_query("ko".to_string(), user.clone());
-        before_messages.insert(0, begin_query);
+        before_messages.insert(0, GeminiChatChunk { query: begin_query, is_bot: false,image: None });
 
     }
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
-    let _push_query = before_messages.push(calling_msg.content.clone());
+    let attachment_user_msg = calling_msg.attachments.clone();
+    let mut image = None;
+    if attachment_user_msg.len() > 0 {
+        let image_origin = attachment_user_msg.get(0).unwrap();
+        //fetching image
+        LOGGER.log(LogLevel::Debug, &format!("Image fetch start: {:?}", image_origin.url));
+        let data = reqwest::get(image_origin.url.clone())
+        .await
+        .unwrap();
+
+        
+        match data.error_for_status(){
+            Ok(res) => {
+                LOGGER.log(LogLevel::Debug, &format!("Image fetch success: {:?}", image_origin.url));
+                let image_data = res.bytes().await.unwrap();
+                let engine = base64::engine::general_purpose::STANDARD;
+                let image_base64 = engine.encode(image_data);
+                let image_mime = image_origin.content_type.clone().unwrap_or("image/png".to_string());
+                image = Some(GeminiImageInputType {
+                    base64_image: image_base64,
+                    mime_type: image_mime
+                });
+            },
+            _ => {
+                LOGGER.log(LogLevel::Error, &format!("Image fetch failed: {:?}", image_origin.url));
+                image = None;
+            }
+        }
+
+        
+    }
+    let user_msg_current = GeminiChatChunk{
+        query: calling_msg.content.clone(),
+        is_bot: false,
+        image
+    };
+    let _push_query = before_messages.push(user_msg_current);
 
     let ai_response = GEMINI_CLIENT.lock().await
     .send_query_to_gemini(before_messages).await

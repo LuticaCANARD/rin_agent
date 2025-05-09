@@ -170,7 +170,7 @@ impl EventHandler for Handler {
                 // Check if the message is a reply to another message
 
                 let content = cpy_msg.content.clone();
-                if content.len() > 0 {
+                if content.len() > 0 || cpy_msg.attachments.len() > 0 {
                     // Handle the query here
                     LOGGER.log(LogLevel::Info, &format!("Query found: {:?}", content));
                     gemini_query::continue_query(&ctx, &msg,&msg.author).await;

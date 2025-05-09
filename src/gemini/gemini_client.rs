@@ -6,6 +6,7 @@ use tokio::sync::watch::{Receiver, Ref};
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 
 use crate::libs::logger::{LOGGER, LogLevel};
+use crate::setting::gemini_setting::get_gemini_generate_config;
 
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
@@ -14,26 +15,60 @@ pub struct GeminiResponse {
     pub finish_reason: String,
     pub avg_logprobs: f64,
 }
-
-pub struct GeminiClient<'a, T> where T: Clone {
-    net_client: Client,
-    pipeline_message_from_discord: &'a AsyncThreadPipeline<T>,
-    query_function: fn(T) -> Vec<String>,
+#[derive(Debug, Clone)]
+pub struct GeminiImageInputType {
+    pub base64_image: String,
+    // e.g. "image/png", "image/jpeg"
+    pub mime_type: String,
+}
+#[derive(Debug, Clone)]
+pub struct GeminiChatChunk {
+    pub query: String,
+    pub image: Option<GeminiImageInputType>,
+    pub is_bot: bool,
 }
 
-pub trait GeminiClientTrait<'a, T> where T: Clone {
-    fn new(pipe: &'a AsyncThreadPipeline<T>, query_fn: fn(T) -> Vec<String>) -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<GeminiResponse, String>;
+pub struct GeminiClient {
+    net_client: Client
 }
-impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
-    fn new(pipe:&'a AsyncThreadPipeline<T>,query_fn: fn(T) -> Vec<String>) -> Self {
+
+pub trait GeminiClientTrait {
+    fn new() -> Self;
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>) -> Result<GeminiResponse, String>;
+    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>) -> serde_json::Value {
+        json!({
+            "contents": [
+                query.iter().map(|chunk| {
+                if chunk.image.is_none() {
+                    json!({
+                        "role" : if chunk.is_bot {"model" } else {"user"},
+                        "parts": [{ "text": chunk.query,}]
+                    })
+                } else {
+                    json!({
+                        "role" : if chunk.is_bot {"model"} else {"user"},
+                        "parts": [{"text": chunk.query},
+                            {
+                                "inline_data": {
+                                    "mime_type": chunk.image.as_ref().map(|img| img.mime_type.clone()).unwrap_or_default(),
+                                    "data": chunk.image.as_ref().map(|img| img.base64_image.clone()).unwrap_or_default()
+                                }
+                            }
+                        ]
+                    })
+                }
+            }).collect::<Vec<_>>()
+            ],
+            "generationConfig": get_gemini_generate_config()
+        })
+    }
+}
+impl GeminiClientTrait for GeminiClient {
+    fn new() -> Self {
         GeminiClient {
             net_client: Client::new(),
-            pipeline_message_from_discord: pipe,
-            query_function: query_fn,
         }
     }
-    
 /* curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
 -H 'Content-Type: application/json' \
 -X POST \
@@ -68,44 +103,13 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
 * 
 */
 
-    async fn send_query_to_gemini(&mut self, query: Vec<String>) -> Result<GeminiResponse, String> {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
             api_key
         );
-        let generate_config = json!(
-            {
-                "responseMimeType": "application/json",
-                "responseSchema": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "discordMessage": { "type": "STRING" },
-                            "subItems": {
-                                "type": "ARRAY",
-                                "items": { "type": "STRING" }
-                            }
-                        },
-                        "propertyOrdering": ["discordMessage", "subItems"]
-                  }
-                  
-                }
-            }
-        );
-        LOGGER.log(LogLevel::Debug, &format!("Gemini > Request: {:?}", query));
-        let objected_query = json!({
-            "contents": [
-                {
-                    "parts": query.iter().map(|q| {
-                        json!({ "text": q })
-                    }).collect::<Vec<_>>()
-                }
-            ],
-            "generationConfig": generate_config
-        });
-
+        let objected_query = self.generate_to_gemini_query(query);
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -114,43 +118,6 @@ impl<'a,T> GeminiClientTrait<'a,T> for GeminiClient<'a,T> where T: Clone {
             .await
             .map_err(|e| e.to_string())?;
         let response_result = response.text().await.unwrap();
-        LOGGER.log(LogLevel::Debug, &format!("Gemini > Response: {:?}", response_result));
-/*
- {
-  "candidates": [
-    {
-      "content": {
-        "parts": [
-          {
-            "text": "안녕하세요! 무엇을 도와드릴까요? 😊\n"
-          }
-        ],
-        "role": "model"
-      },
-      "finishReason": "STOP",
-      "avgLogprobs": -0.12830255925655365
-    }
-  ],
-  "usageMetadata": {
-    "promptTokenCount": 3,
-    "candidatesTokenCount": 16,
-    "totalTokenCount": 19,
-    "promptTokensDetails": [
-      {
-        "modality": "TEXT",
-        "tokenCount": 3
-      }
-    ],
-    "candidatesTokensDetails": [
-      {
-        "modality": "TEXT",
-        "tokenCount": 16
-      }
-    ]
-  },
-  "modelVersion": "gemini-2.0-flash"
-}
- */
         let response_str = response_result;
         let response_json: serde_json::Value = serde_json::from_str(&response_str).map_err(|e| e.to_string())?;
         let candidates = response_json["candidates"].as_array().ok_or("DInvalid response format")?;
