@@ -1,5 +1,5 @@
 use core::hash;
-use std::collections::hash_set;
+use std::collections::{hash_map, hash_set, HashMap};
 
 use base64::Engine;
 use entity::tb_image_attach_file;
@@ -358,24 +358,71 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .await
     .unwrap();
 
+    
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
 
-    let context_using_pro = AiContextDiscordEntity::find()
-    .filter(
-        Condition::all()
-            .add(
-                Expr::col(tb_discord_ai_context::Column::Id)
-                .is_in(ai_contexts.clone())
-            )
-    ).one(&db)
-    .await
-    .unwrap();
-    let context_using_pro = if context_using_pro.is_some() {
-        context_using_pro.unwrap().using_pro_model
-    } else {
+    let context_info = AiContextDiscordEntity::find()
+        .join_as(JoinType::LeftJoin, 
+            Into::<sea_orm::RelationDef>::into(
+                AiContextDiscordEntity::belongs_to(tb_discord_message_to_at_context::Entity)
+                    .from(<tb_discord_ai_context::Entity as EntityTrait>::Column::Id)
+                    .to(TbDiscordMessageToAtContext::AiContextId)
+            ),
+            Alias::new("rel_discord_ctx"))
+        .filter(
+            Condition::all()
+                .add(
+                    Expr::col(tb_discord_ai_context::Column::Id)
+                    .is_in(ai_contexts.clone())
+                )
+        )
+        .find_with_related(
+            tb_discord_message_to_at_context::Entity
+        )
+        .all(&db)
+        .await
+        .unwrap();
+
+    let there_is_next_context = context_info.iter().any(|x| {
+        let context_id = x.0.id as i64;
+        let mut is_next_context = false;
+        for id_node in x.1.iter() {
+            let update_at = id_node.update_at.to_utc();
+            if ai_context_map.contains(&context_id) && update_at > parent_context.last().unwrap().created_at.to_utc() {
+                is_next_context = true;
+                break;
+            }
+        }
+        is_next_context
+    });
+
+    if there_is_next_context {
+        // 컨텍스트 분기를 실행해야 함.
+    }
+
+    let context_using_pro = if context_info.is_empty() {
         false
+    } else {
+        context_info.first().unwrap().0.using_pro_model
     };
-    let mut last_node = parent_context.last().unwrap().id as i64;
+    
+
+    LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", context_info));
+    let id_context_map:HashMap<i64,i64> = context_info.iter().fold(hash_map::HashMap::new(), 
+        |mut acc, curr| {
+            let context_id = curr.0.id as i64;
+            for id_node in curr.1.iter() {
+                let id = id_node.ai_msg_id as i64;
+                let context = context_id;
+                acc.insert(id, context);
+            }
+            acc
+        }
+    );
+    
+    LOGGER.log(LogLevel::Debug, &format!("id_context_map: {:?}", id_context_map));
+    let mut last_context_id = ai_context.last().unwrap().ai_context_id as i64;
+    let mut last_node: i64 = parent_context.last().unwrap().id as i64;
     let mut last_time = parent_context.last().unwrap().created_at.to_utc();
     let mut before_messages:Vec<GeminiChatChunk> = before_messages
         .iter()
@@ -383,11 +430,14 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .fold(Vec::new(), |mut acc, curr| {
             LOGGER.log(LogLevel::Debug, &format!("curr: {:?},{},{},{:?}", curr,last_node,ai_context_map.contains(&curr.0.id),ai_context_map));
             if curr.0.id <= last_node 
+            && id_context_map.contains_key(&curr.0.id)
+            && id_context_map.get(&curr.0.id).unwrap() <= &last_context_id
             && curr.0.created_at.to_utc() <= last_time {
                 LOGGER.log(LogLevel::Debug, &format!("FILTERED! curr: {:?}", curr));
                 acc.push(curr);
                 last_node = curr.0.id;
                 last_time = curr.0.created_at.to_utc();
+                last_context_id = *id_context_map.get(&curr.0.id).unwrap();
             } 
         acc
         })

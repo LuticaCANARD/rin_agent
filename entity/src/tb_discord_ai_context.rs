@@ -14,6 +14,15 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "super::tb_discord_message_to_at_context::Entity")]
+    TbDiscordMessageToAtContext,
+}
+
+impl Related<super::tb_discord_message_to_at_context::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TbDiscordMessageToAtContext.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}
