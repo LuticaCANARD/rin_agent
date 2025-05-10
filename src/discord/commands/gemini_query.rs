@@ -1,3 +1,6 @@
+use core::hash;
+use std::collections::hash_set;
+
 use base64::Engine;
 use entity::tb_image_attach_file;
 use sea_orm::prelude::Expr;
@@ -263,6 +266,33 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     LOGGER.log(LogLevel::Debug, &format!("DB Connection: {:?}", db));
     let msg_ref_id = calling_msg.referenced_message.clone().unwrap().id.get() as i64;
     LOGGER.log(LogLevel::Debug, &format!("msg_ref_id: {:?}", msg_ref_id));
+
+    let parent_context = AiContextEntity::find()
+    .join_as(
+        JoinType::LeftJoin,
+        Into::<sea_orm::RelationDef>::into(
+            AiContextEntity::belongs_to(tb_discord_message_to_at_context::Entity)
+                .from(<entity::prelude::TbAiContext as EntityTrait>::Column::Id)
+                .to(TbDiscordMessageToAtContext::AiMsgId)
+        ),
+        Alias::new("rel_discord_ctx"),
+    )
+    .filter(
+        Expr::col((
+            Alias::new("rel_discord_ctx"),
+            TbDiscordMessageToAtContext::DiscordMessage,
+        ))
+        .eq(msg_ref_id)
+    )
+    .order_by(<entity::prelude::TbAiContext as EntityTrait>::Column::Id, sea_orm::Order::Asc)
+    .all(&db)
+    .await
+    .unwrap();
+
+    LOGGER.log(LogLevel::Debug, &format!("parent_context: {:?}", parent_context));
+
+
+
     let ai_context = AiContextDiscordMessageEntity::find().filter(
         Condition::all()
             .add(
@@ -276,6 +306,9 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .all(&db)
     .await
     .unwrap();
+
+    let ai_context_map = ai_context.iter().map(|x| x.ai_context_id as i64).collect::<hash_set::HashSet<i64>>();
+
 
     if ai_context.len() == 0 {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
@@ -297,7 +330,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .join_as(
         JoinType::InnerJoin,
         Into::<sea_orm::RelationDef>::into(
-              tb_ai_context::Entity::belongs_to(tb_discord_message_to_at_context::Entity)
+            tb_ai_context::Entity::belongs_to(tb_discord_message_to_at_context::Entity)
                 .from(tb_ai_context::Column::Id)
                 .to(tb_discord_message_to_at_context::Column::AiMsgId)
         ),
@@ -309,6 +342,14 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             tb_discord_message_to_at_context::Column::AiContextId,
         ))
         .is_in(ai_contexts.clone())
+        .and(
+            Expr::col(tb_ai_context::Column::CreatedAt)
+            .lte(parent_context.last().unwrap().created_at.to_utc())
+        )
+        .and(
+            Expr::col(tb_ai_context::Column::Id)
+            .lte(parent_context.last().unwrap().id as i64)
+        )
     )
     .order_by(tb_ai_context::Column::Id, sea_orm::Order::Asc)
     .find_also_related(tb_image_attach_file::Entity) // 
@@ -333,9 +374,26 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     } else {
         false
     };
-
-
-    let mut before_messages:Vec<GeminiChatChunk> = before_messages.iter().map(context_process).collect();
+    let mut last_node = parent_context.last().unwrap().id as i64;
+    let mut last_time = parent_context.last().unwrap().created_at.to_utc();
+    let mut before_messages:Vec<GeminiChatChunk> = before_messages
+        .iter()
+        .rev()
+        .fold(Vec::new(), |mut acc, curr| {
+            LOGGER.log(LogLevel::Debug, &format!("curr: {:?},{},{},{:?}", curr,last_node,ai_context_map.contains(&curr.0.id),ai_context_map));
+            if curr.0.id <= last_node 
+            && curr.0.created_at.to_utc() <= last_time {
+                LOGGER.log(LogLevel::Debug, &format!("FILTERED! curr: {:?}", curr));
+                acc.push(curr);
+                last_node = curr.0.id;
+                last_time = curr.0.created_at.to_utc();
+            } 
+        acc
+        })
+        .into_iter()
+        .rev()
+        .map(context_process)
+        .collect();
 
     let user_locale = user.locale.clone();
 
@@ -347,7 +405,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         before_messages.insert(0, begin_query);
 
     }
-    LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
+    LOGGER.log(LogLevel::Debug, &format!("before_messages_filtered: {:?}", before_messages));
     let attachment_user_msg = calling_msg.attachments.clone();
     let mut image = None;
     if attachment_user_msg.len() > 0 {
