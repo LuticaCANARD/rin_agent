@@ -1,13 +1,16 @@
 use base64::Engine;
+use entity::tb_image_attach_file;
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Alias;
-use sea_orm::{Condition, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{Condition, ConnectionTrait, EntityTrait, Insert, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 use sqlx::types::chrono;
 use crate::discord::constant::DISCORD_DB_ERROR;
-use crate::gemini::gemini_client::{GeminiChatChunk, GeminiClientTrait, GeminiImageInputType, GeminiResponse};
+use crate::gemini::gemini_client::GeminiClientTrait;
+use crate::gemini::types::{GeminiChatChunk, GeminiImageInputType, GeminiResponse};
+use crate::gemini::utils::upload_image_to_gemini;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
 use crate::model::db::driver::DB_CONNECTION_POOL;
@@ -18,6 +21,8 @@ use entity::tb_ai_context::{self, ActiveModel as AiContextModel};
 use entity::tb_ai_context::Entity as AiContextEntity;
 use entity::tb_discord_ai_context::{self, ActiveModel as AiContextDiscordModel, Entity as AiContextDiscordEntity};
 use entity::tb_discord_message_to_at_context::{self, ActiveModel as AiContextDiscordMessageModel, Column as TbDiscordMessageToAtContext, Entity as AiContextDiscordMessageEntity};
+type PastQuery = (tb_ai_context::Model, Option<tb_image_attach_file::Model>);
+type QueryDBVector = Vec<PastQuery>;
 
 fn generate_message_block(box_msg: String, title:String , description:String,footer:String,need_emded:bool) -> CreateMessage{
     let msg = CreateMessage::new()                
@@ -39,13 +44,23 @@ fn user_mention(user: &User) -> String {
     format!("<@{}>\n", user.id.get())
 }
 
-fn context_process(origin:&tb_ai_context::Model) -> GeminiChatChunk {
+fn context_process(origin:&PastQuery) -> GeminiChatChunk {
     GeminiChatChunk{
-        query: origin.context.clone(),
-        is_bot: origin.by_bot,
-        timestamp: origin.created_at.to_utc().to_string(),
-        image: None,
-        user_id: Some(origin.user_id.to_string()),
+        query: origin.0.context.clone(),
+        is_bot: origin.0.by_bot,
+        timestamp: origin.0.created_at.to_utc().to_string(),
+        image: if origin.1.is_some() {
+            let image = origin.1.clone().unwrap();
+            let image = GeminiImageInputType{
+                base64_image: None,
+                file_url: Some(image.file_src),
+                mime_type: image.mime_type.unwrap_or("image/png".to_string()),
+            };
+            Some(image)
+        } else {
+            None
+        },
+        user_id: Some(origin.0.user_id.to_string()),
     }
 }
 
@@ -80,7 +95,6 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
         }
         if chunk == 0 {
             if let Some(ref ref_msg) = ref_msg {
-
                 response_msg = response_msg.reference_message(ref_msg);
             }
         }
@@ -182,7 +196,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
-                parent_context: sea_orm::Set(None),
+                parent_context: sea_orm::Set([].to_vec()),
                 using_pro_model: sea_orm::Set(use_pro),
                 ..Default::default()
             })
@@ -270,25 +284,34 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     }
     LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context));
     let ai_contexts = ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>();
-    let before_messages = tb_ai_context::Entity::find()
+    let before_messages:QueryDBVector = tb_ai_context::Entity::find()
+    .join_as(
+        JoinType::LeftJoin,
+        Into::<sea_orm::RelationDef>::into(
+            tb_ai_context::Entity::belongs_to(tb_image_attach_file::Entity)
+                .from(tb_ai_context::Column::ImageFileId)
+                .to(tb_image_attach_file::Column::ImageId)
+        ),
+        Alias::new("rel_image"),
+    )
     .join_as(
         JoinType::InnerJoin,
-        Into::<sea_orm::RelationDef>::into(tb_discord_message_to_at_context::Entity::belongs_to(tb_ai_context::Entity)
-            .from(tb_discord_message_to_at_context::Column::AiMsgId)
-            .to(tb_ai_context::Column::Id)) // 혹은 .into() 그대로 사용하셔도 됩니다.
-            .rev(), // <--- 이 부분을 추가합니다.
-        Alias::new("rel_discord_ctx"), // 여기 alias 이름
+        Into::<sea_orm::RelationDef>::into(
+              tb_ai_context::Entity::belongs_to(tb_discord_message_to_at_context::Entity)
+                .from(tb_ai_context::Column::Id)
+                .to(tb_discord_message_to_at_context::Column::AiMsgId)
+        ),
+        Alias::new("rel_discord_ctx"),
     )
     .filter(
         Expr::col((
-            Alias::new("rel_discord_ctx"), // 이 별칭은 join_as에서 정의한 별칭을 참조
+            Alias::new("rel_discord_ctx"),
             tb_discord_message_to_at_context::Column::AiContextId,
         ))
-        .is_in(
-            ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>()
-        ),
+        .is_in(ai_contexts.clone())
     )
     .order_by(tb_ai_context::Column::Id, sea_orm::Order::Asc)
+    .find_also_related(tb_image_attach_file::Entity) // 
     .all(&db)
     .await
     .unwrap();
@@ -328,34 +351,58 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let attachment_user_msg = calling_msg.attachments.clone();
     let mut image = None;
     if attachment_user_msg.len() > 0 {
-        let image_origin = attachment_user_msg.get(0).unwrap();
-        //fetching image
-        LOGGER.log(LogLevel::Debug, &format!("Image fetch start: {:?}", image_origin.url));
-        let data = reqwest::get(image_origin.url.clone())
-        .await
-        .unwrap();
-
-        
-        match data.error_for_status(){
-            Ok(res) => {
-                LOGGER.log(LogLevel::Debug, &format!("Image fetch success: {:?}", image_origin.url));
-                let image_data = res.bytes().await.unwrap();
-                let engine = base64::engine::general_purpose::STANDARD;
-                let image_base64 = engine.encode(image_data);
-                let image_mime = image_origin.content_type.clone().unwrap_or("image/png".to_string());
-                image = Some(GeminiImageInputType {
-                    base64_image: image_base64,
-                    mime_type: image_mime
-                });
-            },
-            _ => {
-                LOGGER.log(LogLevel::Error, &format!("Image fetch failed: {:?}", image_origin.url));
+        let image_origin = attachment_user_msg.get(0).cloned().unwrap();
+        if let Some(mime_type) = image_origin.content_type.clone() {
+            let ts = &db.transaction(
+                |conn| Box::pin(async move {
+                    let image_model = entity::tb_image_attach_file::ActiveModel {
+                        file_src: sea_orm::Set(image_origin.url.clone()),
+                        ..Default::default()
+                    };
+                    let image_model = entity::tb_image_attach_file::Entity::insert(image_model)
+                        .exec_with_returning(conn)
+                        .await
+                        .unwrap();
+                    let image = GeminiImageInputType{
+                        base64_image: None,
+                        file_url: Some(image_model.file_src),
+                        mime_type: mime_type.clone(),
+                    };
+                    let image = upload_image_to_gemini(image, image_model.image_id.to_string()).await;
+                    if image.is_err() {
+                        LOGGER.log(LogLevel::Error, &format!("Image upload failed: {:?}", image));
+                        return Err(serenity::Error::Other("Image upload failed"));
+                    }
+                    Ok(image)
+                })
+            ).await;
+            if ts.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("Image fetch failed: {:?}", ts));
+                calling_msg.channel_id.say(_ctx, "이미지 전송에 실패했습니다.").await.unwrap();
+                image = None;
+            } else if let Some(tsimage) = ts.as_ref().ok() {
+                image = Some(tsimage.clone());
+            } else {
+                LOGGER.log(LogLevel::Error, "DB Transaction Error");
+                calling_msg.channel_id.say(_ctx, "이미지 전송에 실패했습니다.").await.unwrap();
                 image = None;
             }
         }
-
-        
     }
+    let image = if image.is_some() {
+        let image = image.unwrap();
+        let image_res = image.ok().unwrap();
+        let image = GeminiImageInputType{
+            base64_image: image_res.base64_image,
+            file_url: image_res.file_url,
+            mime_type: image_res.mime_type.clone(),
+        };
+        Some(image)
+    } else {
+        None
+    };
+    let image_record = image.clone();
+
     let user_msg_current = GeminiChatChunk{
         query: calling_msg.content.clone(),
         is_bot: false,
@@ -363,12 +410,23 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         timestamp: calling_msg.timestamp.to_string(),
         image
     };
-    let _push_query = before_messages.push(user_msg_current);
-
+    let _push_query: () = before_messages.push(user_msg_current);
+    LOGGER.log(LogLevel::Debug, &format!("Sending Query: {:?}", before_messages));
     let ai_response = GEMINI_CLIENT.lock().await
     .send_query_to_gemini(before_messages,context_using_pro).await;
     if ai_response.is_err() {
         typing.stop();
+        LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", ai_response));
+        let error_msg = ai_response.unwrap_err();
+        let mut response_msg: CreateMessage = CreateMessage::new()
+        .content(error_msg);
+        if let Some(ref ref_msg) = calling_msg.referenced_message {
+            response_msg = response_msg.reference_message(&**ref_msg);
+        }
+        calling_msg.channel_id.send_message(_ctx, 
+            response_msg
+        ).await.unwrap();
+        LOGGER.log(LogLevel::Error, "Gemini API Error");
         return;
     }
     let ai_response = ai_response.unwrap();
@@ -382,12 +440,29 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         context_using_pro
     ).await;
     typing.stop();
+    let mut image_id:Option<i64> = None;
+    if let Some(image) = image_record {
+        // insert image...
+        if let Some(file_src) = image.file_url {
+            let image_inserted =        entity::tb_image_attach_file::ActiveModel {
+                file_src: sea_orm::Set(file_src),
+                mime_type: sea_orm::Set(Some(image.mime_type.to_string())),
+                ..Default::default()
+            };
+            let image_inserted = entity::tb_image_attach_file::Entity::insert(image_inserted)
+            .exec_with_returning(&db)
+            .await
+            .unwrap();
+            image_id = Some(image_inserted.image_id);
+        }
+    }
     let inserted = AiContextModel {
         user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
         context: sea_orm::Set(calling_msg.content.clone()),
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
         by_bot: sea_orm::Set(false),
+        image_file_id: sea_orm::Set(image_id),
         ..Default::default()
     };
     let response_record = AiContextModel {
@@ -396,6 +471,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
         by_bot: sea_orm::Set(true),
+        image_file_id: sea_orm::Set(None),
         ..Default::default()
     };
     let _insert_context_desc = AiContextEntity::insert(inserted)
@@ -405,10 +481,16 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .unwrap();
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
 
+    let parent_context = if ai_context.len() > 0 {
+        ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>()
+    } else {
+        [].to_vec()
+    };
+
     let _insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
-        parent_context: sea_orm::Set(Some(ai_context[0].ai_context_id as i64)),
+        parent_context: sea_orm::Set(parent_context),
         using_pro_model: sea_orm::Set(context_using_pro),
         ..Default::default()
     }).exec_with_returning(&db)

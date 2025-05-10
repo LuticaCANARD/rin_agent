@@ -4,3 +4,4 @@ pub use super::tb_ai_context::Entity as TbAiContext;
 pub use super::tb_discord_ai_context::Entity as TbDiscordAiContext;
 pub use super::tb_discord_guilds::Entity as TbDiscordGuilds;
 pub use super::tb_discord_message_to_at_context::Entity as TbDiscordMessageToAtContext;
+pub use super::tb_image_attach_file::Entity as TbImageAttachFile;

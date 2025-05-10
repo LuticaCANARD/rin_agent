@@ -9,8 +9,8 @@ pub struct Model {
     pub id: i64,
     pub guild_id: i64,
     pub root_msg: i64,
-    pub parent_context: Option<i64>,
     pub using_pro_model: bool,
+    pub parent_context: Vec<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

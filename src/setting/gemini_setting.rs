@@ -5,7 +5,7 @@ use serde_json::json;
 use serenity::all::User;
 use sqlx::types::chrono;
 
-use crate::gemini::gemini_client::GeminiChatChunk;
+use crate::gemini::types::GeminiChatChunk;
 
 pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-exp-03-25";
 pub const GEMINI_MODEL_FLASH: &str = "gemini-2.5-flash-preview-04-17"; 

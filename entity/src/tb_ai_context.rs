@@ -15,9 +15,25 @@ pub struct Model {
     pub guild_id: i64,
     pub channel_id: i64,
     pub by_bot: bool,
+    pub image_file_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::tb_image_attach_file::Entity",
+        from = "Column::ImageFileId",
+        to = "super::tb_image_attach_file::Column::ImageId",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    TbImageAttachFile,
+}
+
+impl Related<super::tb_image_attach_file::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TbImageAttachFile.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

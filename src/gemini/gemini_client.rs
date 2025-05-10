@@ -2,45 +2,17 @@ use std::env;
 
 use reqwest::Client;
 use serde_json::{json, Value};
+use serenity::json;
 
+use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
+use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
-#[derive(Debug, Clone)]
-pub struct GeminiResponse {
-    pub discord_msg: String,
-    pub sub_items: Vec<String>,
-    pub finish_reason: String,
-    pub avg_logprobs: f64,
-}
-#[derive(Debug, Clone)]
-pub struct GeminiImageInputType {
-    pub base64_image: String,
-    // e.g. "image/png", "image/jpeg"
-    pub mime_type: String,
-}
-#[derive(Debug, Clone)]
-pub struct GeminiChatChunk {
-    pub query: String,
-    pub image: Option<GeminiImageInputType>,
-    pub is_bot: bool,
-    pub timestamp: String,
-    pub user_id: Option<String>, 
-}
-
+use super::types::GeminiImageInputType;
 
 pub struct GeminiClient {
     net_client: Client
-}
-
-
-fn generate_gemini_string_from_chunk(chunk: &GeminiChatChunk) -> String {
-    format!("
-    time : {} 
-    sender : {}
-    message : {}
-    ",&chunk.timestamp,if !chunk.is_bot {chunk.user_id.clone().unwrap()} else {String::from("0")}, chunk.query
-    ).to_string()
 }
 
 pub trait GeminiClientTrait {
@@ -49,26 +21,7 @@ pub trait GeminiClientTrait {
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>) -> serde_json::Value {
         json!({
             "contents": [
-                query.iter().map(|chunk| {
-                if chunk.image.is_none() {
-                    json!({
-                        "role" : if chunk.is_bot {"model"} else {"user"},
-                        "parts": [{ "text": generate_gemini_string_from_chunk(chunk),}]
-                    })
-                } else {
-                    json!({
-                        "role" : if chunk.is_bot {"model"} else {"user"},
-                        "parts": [{"text": generate_gemini_string_from_chunk(chunk)},
-                            {
-                                "inline_data": {
-                                    "mime_type": chunk.image.as_ref().map(|img| img.mime_type.clone()).unwrap_or_default(),
-                                    "data": chunk.image.as_ref().map(|img| img.base64_image.clone()).unwrap_or_default()
-                                }
-                            }
-                        ]
-                    })
-                }
-            }).collect::<Vec<_>>()
+                query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ],
             "generationConfig": get_gemini_generate_config()
         })
@@ -119,7 +72,7 @@ impl GeminiClientTrait for GeminiClient {
         
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH},
+            if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH },
             api_key
         );
         let objected_query = self.generate_to_gemini_query(query);
