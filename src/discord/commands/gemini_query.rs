@@ -11,11 +11,10 @@ use serenity::model::prelude::*;
 use serenity::prelude::*;
 use sqlx::types::chrono;
 use crate::discord::constant::DISCORD_DB_ERROR;
-use crate::gemini::gemini_client::GeminiClientTrait;
+use crate::gemini::gemini_client::{self, GeminiClientTrait};
 use crate::gemini::types::{GeminiChatChunk, GeminiImageInputType, GeminiResponse};
 use crate::gemini::utils::upload_image_to_gemini;
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::gemini::GEMINI_CLIENT;
 use crate::model::db::driver::DB_CONNECTION_POOL;
 use crate::utils::split_text::split_text_by_length_and_markdown;
 use crate::setting::gemini_setting::{get_begin_query, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
@@ -139,16 +138,18 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             // Send a response to the interaction
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
             let str_query = s.to_string();
-            let response = GEMINI_CLIENT.lock().await.send_query_to_gemini(vec![
-                get_begin_query(_options.locale.clone(), _options.user.clone()),
-                GeminiChatChunk{
-                    query: str_query.clone(),
-                    is_bot: false,
-                    image: None,
-                    timestamp: chrono::Utc::now().to_string(),
-                    user_id: Some(_options.user.id.get().to_string()),
-                }
-            ],use_pro).await;
+            let response = 
+            gemini_client::GeminiClient::new()
+                .send_query_to_gemini(vec![
+                    get_begin_query(_options.locale.clone(), _options.user.clone()),
+                    GeminiChatChunk{
+                        query: str_query.clone(),
+                        is_bot: false,
+                        image: None,
+                        timestamp: chrono::Utc::now().to_string(),
+                        user_id: Some(_options.user.id.get().to_string()),
+                    }
+                ],use_pro).await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
                 return Err(SerenityError::Other("Gemini API Error"));
@@ -470,7 +471,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     };
     let _push_query: () = before_messages.push(user_msg_current);
     LOGGER.log(LogLevel::Debug, &format!("Sending Query: {:?}", before_messages));
-    let ai_response = GEMINI_CLIENT.lock().await
+    let ai_response = gemini_client::GeminiClient::new()
     .send_query_to_gemini(before_messages,context_using_pro).await;
     if ai_response.is_err() {
         typing.stop();

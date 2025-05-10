@@ -9,8 +9,6 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
-use super::types::GeminiImageInputType;
-
 pub struct GeminiClient {
     net_client: Client
 }
