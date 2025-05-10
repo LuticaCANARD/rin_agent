@@ -1,4 +1,8 @@
 /target
 .env
+
+
+
+# 서버 관리용
 nohup.out
 /scripts
