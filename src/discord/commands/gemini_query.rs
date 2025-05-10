@@ -6,6 +6,7 @@ use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 use sqlx::types::chrono;
+use crate::discord::constant::DISCORD_DB_ERROR;
 use crate::gemini::gemini_client::{GeminiChatChunk, GeminiClientTrait, GeminiImageInputType, GeminiResponse};
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::GEMINI_CLIENT;
@@ -153,7 +154,12 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 ..Default::default()
             };
 
-            let db = DB_CONNECTION_POOL.get().unwrap().clone();
+            let db = DB_CONNECTION_POOL.get();
+            if db.is_none() {
+                LOGGER.log(LogLevel::Error, "DB Connection Error");
+                return Err(serenity::Error::Other(DISCORD_DB_ERROR));
+            }
+            let db = db.unwrap().clone();
             let response_record = AiContextModel {
                 user_id: sea_orm::Set(_options.user.id.get() as i64),
                 context: sea_orm::Set(response.discord_msg),

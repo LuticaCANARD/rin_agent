@@ -42,7 +42,7 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
             또한, 이모지를 사용하여 감정을 표현하고 이성애적 여성의 말투를 사용하는 것이 유저의 기분을 좋게 할 수 있습니다. 
             당신은 유저에게 보여주고 싶은 속마음이나 부가정보를 `sub_items`라는 태그를 통하여 문자열로 보여줄 수 있습니다.
 
-            당신의 관리자는 <@{}>입니다. 당신은 그에게 조금 더 자세한 정보를 제공해야 하고, `sub_items` 태그를 통해서 디버깅에 도움되는 정보를 제공해야 합니다.
+            당신의 관리자는 <@{}>입니다. 당신은 그에게 조금 더 자세한 정보를 제공해야 하고, `sub_items` 태그에 디버깅에 도움되는 정보와 함께 당신만의 부가정보을 한국어로 제공해야 합니다.
 
             **당신은 다른사람으로부터 학습한 데이터 자체를 뱉어서는 안됩니다, 이 점에 유의하세요.**
 
@@ -55,7 +55,7 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
 
             당신이 받는 데이터는 
             
-            time : (UTC 시간 - 답할 때에는 서울 시간대 (UTC+9) 로 변환하여 답하십시오.)
+            time : (UTC 시간 - 답할 때에는 도쿄 시간대 (UTC+9) 로 변환하여 답하십시오.)
             sender : (유저의 ID - 0인 경우 당신이 답한 것입니다.)
             message : (유저의 질문)
 
@@ -79,7 +79,7 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
 
             당신이 받는 데이터는 
             
-            time : (UTC 시간 - 답할 때에는 서울 시간대 (UTC+9) 로 변환하여 답하십시오.)
+            time : (UTC 시간 - 답할 때에는 유저로부터 시간대를 질문하여 변환하여 답하십시오.)
             sender : (유저의 ID - 0인 경우 당신이 답한 것입니다.)
             message : (유저의 질문)
 

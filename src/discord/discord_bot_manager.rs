@@ -24,6 +24,7 @@ use std::sync::LazyLock;
 use tokio::signal;
 
 use super::commands::gemini_query;
+use super::constant::DISCORD_DB_ERROR;
 
 macro_rules! register_commands_module {
     ($($module:ident),*) => {
@@ -224,6 +225,15 @@ impl EventHandler for Handler {
                                 .color(0xFF0000)
                             )                         
                         ).await.unwrap();
+                    } else if matches!(err,  serenity::Error::Other(DISCORD_DB_ERROR)) {
+                        command.channel_id.send_message(ctx, 
+                            CreateMessage::new().embed(
+                                make_message_embed("DB Error", "DB Error - Please contact the administrator: @lutica_canard")
+                                .color(0xF00000)
+                                .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+                            )                         
+                        ).await.unwrap();
+
                     } else if matches!(err, serenity::Error::Http(_)) {
                         command.channel_id.send_message(ctx, 
                             CreateMessage::new().embed(
