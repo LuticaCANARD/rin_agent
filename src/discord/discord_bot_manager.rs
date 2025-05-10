@@ -84,7 +84,8 @@ macro_rules! define_lazy_static {
 define_lazy_static!(USING_COMMANDS, USING_ACTIVATE_COMMANDS, 
     [
         ping,
-        gemini_query
+        gemini_query,
+        repo
     ]
 );
 
