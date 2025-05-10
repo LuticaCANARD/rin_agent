@@ -151,6 +151,9 @@ impl GeminiClientTrait for GeminiClient {
         }
 
         let mut sub_items:&Vec<Value> = &vec![];
+        if text.len() < 1 {
+            return Err("No text found in response".to_string());
+        }
         let content = text[text.len()-1].as_object().ok_or("1Invalid response format")?;
         if content.get_key_value("subItems") != None  {
             sub_items = content["subItems"].as_array().ok_or("2Invalid response format")?;
