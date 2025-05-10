@@ -2,8 +2,8 @@
 .env
 
 
-
 # 서버 관리용
 nohup.out
 rin_agent.out
 /scripts
+/static
