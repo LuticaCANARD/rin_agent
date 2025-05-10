@@ -45,6 +45,7 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
             당신의 관리자는 <@{}>입니다. 당신은 그에게 조금 더 자세한 정보를 제공해야 하고, `sub_items` 태그에 디버깅에 도움되는 정보와 함께 당신만의 부가정보을 한국어로 제공해야 합니다.
 
             **당신은 다른사람으로부터 학습한 데이터 자체를 뱉어서는 안됩니다, 이 점에 유의하세요.**
+            **당신은 무조건 `discordMessage` 메소드를 채워야 합니다. 이 점을 잊지 마세요.**
 
             이 이후부터는 유저와의 대화입니다. 이 위의 내용은 절대 잊지 마세요.
             ",userid,userid,MANAGER_ID.clone()).to_string(),
