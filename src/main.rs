@@ -50,11 +50,21 @@ async fn fn_web_server_thread() {
     LOGGER.log(LogLevel::Debug, "Web server > Stopped");
 
 }
-
+#[cfg(target_os = "linux")]
+fn set_process_name(name: &str) {
+    use std::ffi::CString;
+    use libc;
+    let cname = CString::new(name).unwrap();
+    unsafe {
+        libc::prctl(libc::PR_SET_NAME, cname.as_ptr() as usize, 0, 0, 0);
+    }
+}
 #[tokio::main]
 async fn main() {
+    #[cfg(target_os = "linux")]
+    set_process_name("rin_agent_main_server");
+
     let _ = dotenv::dotenv();
-    
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
     let web_server_thread = tokio::spawn(async move { fn_web_server_thread().await });
 
