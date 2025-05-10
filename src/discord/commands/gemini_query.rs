@@ -409,6 +409,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
         parent_context: sea_orm::Set(Some(ai_context[0].ai_context_id as i64)),
+        using_pro_model: sea_orm::Set(context_using_pro),
         ..Default::default()
     }).exec_with_returning(&db)
     .await
