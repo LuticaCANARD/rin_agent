@@ -396,22 +396,19 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         is_next_context
     });
 
-    if there_is_next_context {
-        // 컨텍스트 분기를 실행해야 함.
-    }
-
     let context_using_pro = if context_info.is_empty() {
         false
     } else {
         context_info.first().unwrap().0.using_pro_model
     };
-    
-
     LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", context_info));
     let id_context_map:HashMap<i64,i64> = context_info.iter().fold(hash_map::HashMap::new(), 
         |mut acc, curr| {
             let context_id = curr.0.id as i64;
             for id_node in curr.1.iter() {
+                if id_node.update_at.to_utc() > parent_context.last().unwrap().created_at.to_utc() {
+                    continue;
+                }
                 let id = id_node.ai_msg_id as i64;
                 let context = context_id;
                 acc.insert(id, context);
@@ -419,7 +416,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             acc
         }
     );
-    
     LOGGER.log(LogLevel::Debug, &format!("id_context_map: {:?}", id_context_map));
     let mut last_context_id = ai_context.last().unwrap().ai_context_id as i64;
     let mut last_node: i64 = parent_context.last().unwrap().id as i64;
@@ -590,22 +586,29 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .unwrap();
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
 
-    let parent_context = if ai_context.len() > 0 {
-        ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>()
-    } else {
-        [].to_vec()
-    };
+    let mut continue_context = ai_contexts.last().unwrap().clone();
 
-    let _insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
+    if there_is_next_context {
+        // 컨텍스트 분기를 실행해야 함.
+        let parent_context = if ai_context.len() > 0 {
+            ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>()
+        } else {
+            [].to_vec()
+        };
+
+        let insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
         guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
         root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
         parent_context: sea_orm::Set(parent_context),
         using_pro_model: sea_orm::Set(context_using_pro),
         ..Default::default()
-    }).exec_with_returning(&db)
-    .await
-    .unwrap();
-    let continue_context = ai_contexts.last().unwrap().clone();
+        }).exec_with_returning(&db)
+        .await
+        .unwrap();
+
+        continue_context = insert_context.id as i64;
+    }
+
     let ai_context_discord_messages = send_msgs.iter().map(|msg| {
         AiContextDiscordMessageModel {
             discord_message: sea_orm::Set(msg.id.get() as i64),
