@@ -309,17 +309,40 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .unwrap();
 
     LOGGER.log(LogLevel::Debug, &format!("parent_context: {:?}", parent_context));
+        // parent_context에서 ai_context_id 추출
+    let ai_context_id = parent_context
+        .last()
+        .and_then(|(_, ctx_to_msg)| ctx_to_msg.as_ref().map(|c| c.ai_context))
+        .unwrap() as i64;
+
+    // 한 번의 쿼리로 현재 및 부모 컨텍스트 모두 조회
+    let context_ids = {
+        let mut ids = ai_context_id.to_string();
+        if let Some(ai_context_info) = tb_discord_ai_context::Entity::find_by_id(ai_context_id)
+            .one(&db)
+            .await
+            .unwrap()
+        {
+            let mut parent_ids = ai_context_info.parent_context.clone();
+            parent_ids.push(ai_context_info.id as i64);
+            ids = parent_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+        }
+        ids
+    };
+
+    let map_context_info_vec = tb_discord_ai_context::Entity::find()
+        .filter(Expr::col(tb_discord_ai_context::Column::Id).is_in(context_ids.split(',').map(|s| s.parse::<i64>().unwrap()).collect::<Vec<_>>()))
+        .all(&db)
+        .await
+        .unwrap();
+
+    let map_context_info = map_context_info_vec
+        .into_iter()
+        .map(|x| (x.id as i64, x))
+        .collect::<hash_map::HashMap<i64, tb_discord_ai_context::Model>>();
+
+    let ai_context_info = map_context_info.get(&ai_context_id);
     
-    let ai_context_info = tb_discord_ai_context::Entity::find()
-    .filter(
-        Expr::col(tb_discord_ai_context::Column::Id)
-        .eq(parent_context.last().unwrap().1.clone().unwrap().ai_context as i64)
-    )
-    .one(&db)
-    .await
-    .unwrap();
-
-
     if ai_context_info.is_none() {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
         typing.stop();
@@ -378,20 +401,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let context_using_pro = ai_context_info.using_pro_model;
     LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", before_messages));
 
-
-    
-    let map_context_info = tb_discord_ai_context::Entity::find()
-    .filter(
-        Expr::col(tb_discord_ai_context::Column::Id)
-        .is_in(ai_context_info.parent_context.clone())
-    )
-    .all(&db)
-    .await
-    .unwrap();
-    let map_context_info = map_context_info.iter().map(|x| {
-        (x.id as i64, x.clone())
-    }).collect::<hash_map::HashMap<i64, tb_discord_ai_context::Model>>();
-
     let ai_context_map = need_load_context_list.iter().map(|x| (
         x.clone() as i64
     )).collect::<hash_set::HashSet<i64>>();
@@ -411,7 +420,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
                 acc.push(curr);
                 if check_node == curr.0.id as i64 {
                     if ai_context_info.parent_context.last().is_some() {
-                        let last_context_id = ai_context_info.parent_context.last().unwrap().clone();
+                        last_context_id = ai_context_info.parent_context.last().unwrap().clone();
                         let info = map_context_info.get(&last_context_id);
                         if info.is_some() {
                             let info = info.unwrap();
