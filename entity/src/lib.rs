@@ -3,6 +3,7 @@
 pub mod prelude;
 
 pub mod tb_ai_context;
+pub mod tb_context_to_msg_id;
 pub mod tb_discord_ai_context;
 pub mod tb_discord_guilds;
 pub mod tb_discord_message_to_at_context;

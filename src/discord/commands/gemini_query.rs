@@ -292,8 +292,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
 
     LOGGER.log(LogLevel::Debug, &format!("parent_context: {:?}", parent_context));
 
-
-
     let ai_context = AiContextDiscordMessageEntity::find().filter(
         Condition::all()
             .add(
@@ -308,6 +306,18 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .await
     .unwrap();
 
+    let ai_context_parent = AiContextDiscordEntity::find()
+    .filter(
+        Condition::all()
+            .add(
+                Expr::col(tb_discord_ai_context::Column::Id).eq(ai_context.last().unwrap().ai_context_id as i64)
+            )
+    )
+    .all(&db)
+    .await
+    .unwrap();
+
+
     let ai_context_map = ai_context.iter().map(|x| x.ai_context_id as i64).collect::<hash_set::HashSet<i64>>();
 
 
@@ -317,7 +327,10 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         return;
     }
     LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context));
-    let ai_contexts = ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>();
+    let ai_contexts = ai_context_parent.iter().map(|x| x.parent_context.clone()).collect::<Vec<Vec<i64>>>();
+    let mut ai_contexts = ai_contexts.iter().flat_map(|x| x.iter()).map(|x| *x).collect::<Vec<i64>>();
+    ai_contexts.push(ai_context.last().unwrap().ai_context_id as i64);
+    let ai_contexts = ai_contexts; 
     let before_messages:QueryDBVector = tb_ai_context::Entity::find()
     .join_as(
         JoinType::LeftJoin,
@@ -343,14 +356,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             tb_discord_message_to_at_context::Column::AiContextId,
         ))
         .is_in(ai_contexts.clone())
-        .and(
-            Expr::col(tb_ai_context::Column::CreatedAt)
-            .lte(parent_context.last().unwrap().created_at.to_utc())
-        )
-        .and(
-            Expr::col(tb_ai_context::Column::Id)
-            .lte(parent_context.last().unwrap().id as i64)
-        )
     )
     .order_by(tb_ai_context::Column::Id, sea_orm::Order::Asc)
     .find_also_related(tb_image_attach_file::Entity) // 
@@ -406,12 +411,12 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         |mut acc, curr| {
             let context_id = curr.0.id as i64;
             for id_node in curr.1.iter() {
-                if id_node.update_at.to_utc() > parent_context.last().unwrap().created_at.to_utc() {
-                    continue;
-                }
                 let id = id_node.ai_msg_id as i64;
                 let context = context_id;
                 acc.insert(id, context);
+            // let id = id_node.ai_msg_id as i64;
+                // let context = context_id;
+                // acc.insert(id, context);
             }
             acc
         }
@@ -587,11 +592,13 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
 
     let mut continue_context = ai_contexts.last().unwrap().clone();
-
+    LOGGER.log(LogLevel::Debug, &format!("there_is_next_context: {:?}", there_is_next_context));
     if there_is_next_context {
         // 컨텍스트 분기를 실행해야 함.
-        let parent_context = if ai_context.len() > 0 {
-            ai_context.iter().map(|x| x.ai_context_id as i64).collect::<Vec<i64>>()
+        let parent_context = if context_info.len() > 0 && ai_context.len() > 0 {
+            let mut inherited_parent = context_info.last().unwrap().0.parent_context.clone();
+            inherited_parent.push(ai_context.last().unwrap().ai_context_id as i64);
+            inherited_parent.iter().map(|x| *x).collect::<Vec<i64>>()
         } else {
             [].to_vec()
         };
