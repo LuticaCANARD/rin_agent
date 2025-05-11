@@ -193,7 +193,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 
             let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
-                root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
+                root_msg: sea_orm::Set( insert_user_and_bot_talk.get(0).unwrap().id),
                 parent_context: sea_orm::Set([].to_vec()),
                 using_pro_model: sea_orm::Set(use_pro),
                 ..Default::default()
@@ -319,6 +319,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .await
     .unwrap();
 
+
     if ai_context_info.is_none() {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
         typing.stop();
@@ -377,12 +378,26 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let context_using_pro = ai_context_info.using_pro_model;
     LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", before_messages));
 
+
+    
+    let map_context_info = tb_discord_ai_context::Entity::find()
+    .filter(
+        Expr::col(tb_discord_ai_context::Column::Id)
+        .is_in(ai_context_info.parent_context.clone())
+    )
+    .all(&db)
+    .await
+    .unwrap();
+    let map_context_info = map_context_info.iter().map(|x| {
+        (x.id as i64, x.clone())
+    }).collect::<hash_map::HashMap<i64, tb_discord_ai_context::Model>>();
+
     let ai_context_map = need_load_context_list.iter().map(|x| (
         x.clone() as i64
     )).collect::<hash_set::HashSet<i64>>();
     let mut last_context_id = ai_context_info.id as i64;
+    let mut check_node = ai_context_info.root_msg;
     let mut last_node: i64 = parent_context.last().unwrap().0.id as i64;
-    let mut last_time = parent_context.last().unwrap().0.created_at.to_utc();
     let mut before_messages:Vec<GeminiChatChunk> = before_messages
         .iter()
         .rev()
@@ -391,13 +406,20 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             LOGGER.log(LogLevel::Debug, &format!("curr: {:?},{},{},{:?}", curr,last_node,ai_context_map.contains(&current_context_id),ai_context_map));
             if curr.0.id <= last_node 
             && ai_context_map.contains(&current_context_id)
-            && last_context_id <= current_context_id
-            && curr.0.created_at.to_utc() <= last_time {
+            && last_context_id == current_context_id {
                 LOGGER.log(LogLevel::Debug, &format!("FILTERED! curr: {:?}", curr));
                 acc.push(curr);
-                last_node = curr.0.id;
-                last_time = curr.0.created_at.to_utc();
-                last_context_id = current_context_id;
+                if check_node == curr.0.id as i64 {
+                    if ai_context_info.parent_context.last().is_some() {
+                        let last_context_id = ai_context_info.parent_context.last().unwrap().clone();
+                        let info = map_context_info.get(&last_context_id);
+                        if info.is_some() {
+                            let info = info.unwrap();
+                            check_node = info.root_msg as i64;
+                            last_node = check_node;
+                        }
+                    }
+                }
             } 
         acc
         })
@@ -548,7 +570,53 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .await
         .unwrap();
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
+
+    let after_parent = tb_discord_message_to_at_context::Entity::find()
+    .join_as(
+        JoinType::LeftJoin,
+        Into::<sea_orm::RelationDef>::into(
+            tb_discord_message_to_at_context::Entity::belongs_to(tb_context_to_msg_id::Entity)
+                .from(tb_discord_message_to_at_context::Column::AiMsgId)
+                .to(tb_context_to_msg_id::Column::AiMsg)
+        ),
+        Alias::new("rel_discord_ctx"),
+    )
+    .filter(
+        Condition::all()
+            .add(
+                // 다음노드가 생성될 필요가 있는지만 묻는 것이므로, in 설정은 기각한다.
+                Expr::col(tb_context_to_msg_id::Column::AiContext).eq(ai_context_info.id as i64)
+            )
+            .add(
+                Expr::col(tb_discord_message_to_at_context::Column::AiMsgId).gt(parent_context.last().unwrap().0.id as i64)
+            )
+    )
+    .all(&db)
+    .await
+    .unwrap();
     let mut continue_context = ai_context_info.id as i64;
+    LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
+    let there_is_next_context = after_parent.len() > 0;
+    LOGGER.log(LogLevel::Debug, &format!("there_is_next_context: {:?}", there_is_next_context));
+    if there_is_next_context {
+        // 컨텍스트 분기를 실행해야 함.
+        let mut parent_context_lst = ai_context_info.parent_context.clone();
+        parent_context_lst.push(ai_context_info.id as i64);
+        let parent_context_lst = parent_context_lst;
+
+        let insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
+        guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
+        root_msg: sea_orm::Set(_insert_context_desc[0].id),
+        parent_context: sea_orm::Set(parent_context_lst),
+        using_pro_model: sea_orm::Set(context_using_pro),
+        ..Default::default()
+        }).exec_with_returning(&db)
+        .await
+        .unwrap();
+
+        continue_context = insert_context.id as i64;
+    }
+
     let _insert_user_and_bot_talk = tb_context_to_msg_id::Entity::insert_many(
         vec![
             tb_context_to_msg_id::ActiveModel {
