@@ -11,6 +11,43 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::tb_ai_context::Entity",
+        from = "Column::AiMsg",
+        to = "super::tb_ai_context::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    TbAiContext,
+    #[sea_orm(
+        belongs_to = "super::tb_discord_ai_context::Entity",
+        from = "Column::AiContext",
+        to = "super::tb_discord_ai_context::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    TbDiscordAiContext,
+    #[sea_orm(has_many = "super::tb_discord_message_to_at_context::Entity")]
+    TbDiscordMessageToAtContext,
+}
+
+impl Related<super::tb_ai_context::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TbAiContext.def()
+    }
+}
+
+impl Related<super::tb_discord_ai_context::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TbDiscordAiContext.def()
+    }
+}
+
+impl Related<super::tb_discord_message_to_at_context::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TbDiscordMessageToAtContext.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

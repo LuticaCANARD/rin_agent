@@ -7,7 +7,6 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub discord_message: i64,
-    pub ai_context_id: i64,
     pub ai_msg_id: i64,
     pub update_at: DateTimeWithTimeZone,
 }
@@ -15,18 +14,18 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::tb_discord_ai_context::Entity",
-        from = "Column::AiContextId",
-        to = "super::tb_discord_ai_context::Column::Id",
+        belongs_to = "super::tb_context_to_msg_id::Entity",
+        from = "Column::AiMsgId",
+        to = "super::tb_context_to_msg_id::Column::AiMsg",
         on_update = "NoAction",
         on_delete = "NoAction"
     )]
-    TbDiscordAiContext,
+    TbContextToMsgId,
 }
 
-impl Related<super::tb_discord_ai_context::Entity> for Entity {
+impl Related<super::tb_context_to_msg_id::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::TbDiscordAiContext.def()
+        Relation::TbContextToMsgId.def()
     }
 }
 

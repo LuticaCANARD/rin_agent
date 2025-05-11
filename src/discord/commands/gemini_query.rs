@@ -2,10 +2,10 @@ use core::hash;
 use std::collections::{hash_map, hash_set, HashMap};
 
 use base64::Engine;
-use entity::tb_image_attach_file;
+use entity::{tb_context_to_msg_id, tb_image_attach_file};
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Alias;
-use sea_orm::{Condition, ConnectionTrait, EntityTrait, Insert, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
+use sea_orm::{Condition, ConnectionTrait, EntityTrait, Insert, InsertResult, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
@@ -23,7 +23,7 @@ use entity::tb_ai_context::{self, ActiveModel as AiContextModel};
 use entity::tb_ai_context::Entity as AiContextEntity;
 use entity::tb_discord_ai_context::{self, ActiveModel as AiContextDiscordModel, Entity as AiContextDiscordEntity};
 use entity::tb_discord_message_to_at_context::{self, ActiveModel as AiContextDiscordMessageModel, Column as TbDiscordMessageToAtContext, Entity as AiContextDiscordMessageEntity};
-type PastQuery = (tb_ai_context::Model, Option<tb_image_attach_file::Model>);
+type PastQuery = (entity::tb_ai_context::Model, Option<entity::tb_image_attach_file::Model>, Option<entity::tb_context_to_msg_id::Model>);
 type QueryDBVector = Vec<PastQuery>;
 
 fn generate_message_block(box_msg: String, title:String , description:String,footer:String,need_emded:bool) -> CreateMessage{
@@ -65,7 +65,6 @@ fn context_process(origin:&PastQuery) -> GeminiChatChunk {
         user_id: Some(origin.0.user_id.to_string()),
     }
 }
-
 async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool,use_pro:bool)->Vec<Message> {
     let origin_msg = message_context.discord_msg.clone();
     let mut send_msgs:Vec<Message> = vec![];
@@ -209,18 +208,32 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             .unwrap();
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted with Context: {:?}", make_context));
             
-
+            let inserted_msg_context_user = tb_context_to_msg_id::ActiveModel {
+                ai_msg: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
+                ai_context: sea_orm::Set(make_context.id as i64),
+                ..Default::default()
+            };
+            let inserted_msg_context_bot = tb_context_to_msg_id::ActiveModel {
+                ai_msg: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
+                ai_context: sea_orm::Set(make_context.id as i64),
+                ..Default::default()
+            };
+            let _insert_context = tb_context_to_msg_id::Entity::insert_many(vec![
+                inserted_msg_context_user,
+                inserted_msg_context_bot,
+            ])
+            .exec(&db)
+            .await
+            .unwrap();
             let ai_context_discord_messages = send_msgs.iter().map(|msg| {
                 AiContextDiscordMessageModel {
                     discord_message: sea_orm::Set(msg.id.get() as i64),
-                    ai_context_id: sea_orm::Set(make_context.id as i64),
                     ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
                     ..Default::default()
                 }
             }).collect::<Vec<_>>();
             let insert_user_msg_to_context =  AiContextDiscordMessageModel {
                 discord_message: sea_orm::Set(_options.id.get() as i64),
-                ai_context_id: sea_orm::Set(make_context.id as i64),
                 ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
                 ..Default::default()
             };
@@ -292,16 +305,24 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
 
     LOGGER.log(LogLevel::Debug, &format!("parent_context: {:?}", parent_context));
 
-    let ai_context = AiContextDiscordMessageEntity::find().filter(
+    let ai_context = AiContextDiscordMessageEntity::find()
+    .join_as(JoinType::InnerJoin,
+        Into::<sea_orm::RelationDef>::into(
+            AiContextDiscordMessageEntity::belongs_to(tb_context_to_msg_id::Entity)
+                .from(TbDiscordMessageToAtContext::AiMsgId)
+                .to(tb_context_to_msg_id::Column::AiMsg)
+        ), Alias::new("rel_discord_ctx") )
+    .filter(
         Condition::all()
             .add(
                 Expr::col(TbDiscordMessageToAtContext::DiscordMessage)
                 .eq(msg_ref_id)
             )
     )
-    .distinct_on(
-        vec![TbDiscordMessageToAtContext::AiContextId]
-    )
+    .distinct_on(vec![
+        (Alias::new("rel_discord_ctx"), tb_context_to_msg_id::Column::AiContext)
+    ])
+    .find_also_related(tb_context_to_msg_id::Entity)
     .all(&db)
     .await
     .unwrap();
@@ -310,7 +331,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .filter(
         Condition::all()
             .add(
-                Expr::col(tb_discord_ai_context::Column::Id).eq(ai_context.last().unwrap().ai_context_id as i64)
+                Expr::col(tb_discord_ai_context::Column::Id).eq(ai_context.clone().last().unwrap().1.clone().unwrap().ai_context as i64)
             )
     )
     .all(&db)
@@ -318,7 +339,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .unwrap();
 
 
-    let ai_context_map = ai_context.iter().map(|x| x.ai_context_id as i64).collect::<hash_set::HashSet<i64>>();
 
 
     if ai_context.len() == 0 {
@@ -329,7 +349,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context));
     let ai_contexts = ai_context_parent.iter().map(|x| x.parent_context.clone()).collect::<Vec<Vec<i64>>>();
     let mut ai_contexts = ai_contexts.iter().flat_map(|x| x.iter()).map(|x| *x).collect::<Vec<i64>>();
-    ai_contexts.push(ai_context.last().unwrap().ai_context_id as i64);
+    ai_contexts.push(ai_context.last().unwrap().1.clone().unwrap().ai_context as i64);
     let ai_contexts = ai_contexts; 
     let before_messages:QueryDBVector = tb_ai_context::Entity::find()
     .join_as(
@@ -350,15 +370,25 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         ),
         Alias::new("rel_discord_ctx"),
     )
+    .join_as(
+        JoinType::LeftJoin,
+        Into::<sea_orm::RelationDef>::into(
+            tb_ai_context::Entity::belongs_to(tb_context_to_msg_id::Entity)
+                .from(tb_ai_context::Column::Id)
+                .to(tb_context_to_msg_id::Column::AiMsg)
+        ),
+        Alias::new("rel_context")
+    )
     .filter(
         Expr::col((
-            Alias::new("rel_discord_ctx"),
-            tb_discord_message_to_at_context::Column::AiContextId,
+            Alias::new("rel_context"),
+            tb_context_to_msg_id::Column::AiContext,
         ))
         .is_in(ai_contexts.clone())
     )
     .order_by(tb_ai_context::Column::Id, sea_orm::Order::Asc)
-    .find_also_related(tb_image_attach_file::Entity) // 
+    .find_also_related(tb_image_attach_file::Entity)
+    .find_also_related(tb_context_to_msg_id::Entity) 
     .all(&db)
     .await
     .unwrap();
@@ -366,79 +396,34 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
 
-    let context_info = AiContextDiscordEntity::find()
-        .join_as(JoinType::LeftJoin, 
-            Into::<sea_orm::RelationDef>::into(
-                AiContextDiscordEntity::belongs_to(tb_discord_message_to_at_context::Entity)
-                    .from(<tb_discord_ai_context::Entity as EntityTrait>::Column::Id)
-                    .to(TbDiscordMessageToAtContext::AiContextId)
-            ),
-            Alias::new("rel_discord_ctx"))
-        .filter(
-            Condition::all()
-                .add(
-                    Expr::col(tb_discord_ai_context::Column::Id)
-                    .is_in(ai_contexts.clone())
-                )
-        )
-        .find_with_related(
-            tb_discord_message_to_at_context::Entity
-        )
-        .all(&db)
-        .await
-        .unwrap();
-
-    let there_is_next_context = context_info.iter().any(|x| {
-        let context_id = x.0.id as i64;
-        let mut is_next_context = false;
-        for id_node in x.1.iter() {
-            let update_at = id_node.update_at.to_utc();
-            if ai_context_map.contains(&context_id) && update_at > parent_context.last().unwrap().created_at.to_utc() {
-                is_next_context = true;
-                break;
-            }
-        }
-        is_next_context
-    });
-
-    let context_using_pro = if context_info.is_empty() {
+    let context_using_pro = if before_messages.is_empty() {
         false
     } else {
-        context_info.first().unwrap().0.using_pro_model
+        ai_context_parent.last().unwrap().using_pro_model
     };
-    LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", context_info));
-    let id_context_map:HashMap<i64,i64> = context_info.iter().fold(hash_map::HashMap::new(), 
-        |mut acc, curr| {
-            let context_id = curr.0.id as i64;
-            for id_node in curr.1.iter() {
-                let id = id_node.ai_msg_id as i64;
-                let context = context_id;
-                acc.insert(id, context);
-            // let id = id_node.ai_msg_id as i64;
-                // let context = context_id;
-                // acc.insert(id, context);
-            }
-            acc
-        }
-    );
-    LOGGER.log(LogLevel::Debug, &format!("id_context_map: {:?}", id_context_map));
-    let mut last_context_id = ai_context.last().unwrap().ai_context_id as i64;
+    LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", before_messages));
+
+    let ai_context_map = ai_context.iter().map(|x| (
+        x.1.clone().unwrap().ai_context as i64
+    )).collect::<hash_set::HashSet<i64>>();
+    let mut last_context_id = ai_context.last().unwrap().1.clone().unwrap().ai_context as i64;
     let mut last_node: i64 = parent_context.last().unwrap().id as i64;
     let mut last_time = parent_context.last().unwrap().created_at.to_utc();
     let mut before_messages:Vec<GeminiChatChunk> = before_messages
         .iter()
         .rev()
         .fold(Vec::new(), |mut acc, curr| {
-            LOGGER.log(LogLevel::Debug, &format!("curr: {:?},{},{},{:?}", curr,last_node,ai_context_map.contains(&curr.0.id),ai_context_map));
+            let current_context_id = curr.2.clone().unwrap().ai_context as i64;
+            LOGGER.log(LogLevel::Debug, &format!("curr: {:?},{},{},{:?}", curr,last_node,ai_context_map.contains(&current_context_id),ai_context_map));
             if curr.0.id <= last_node 
-            && id_context_map.contains_key(&curr.0.id)
-            && id_context_map.get(&curr.0.id).unwrap() <= &last_context_id
+            && ai_context_map.contains(&current_context_id)
+            && last_context_id <= current_context_id
             && curr.0.created_at.to_utc() <= last_time {
                 LOGGER.log(LogLevel::Debug, &format!("FILTERED! curr: {:?}", curr));
                 acc.push(curr);
                 last_node = curr.0.id;
                 last_time = curr.0.created_at.to_utc();
-                last_context_id = *id_context_map.get(&curr.0.id).unwrap();
+                last_context_id = current_context_id;
             } 
         acc
         })
@@ -592,15 +577,32 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
 
     let mut continue_context = ai_contexts.last().unwrap().clone();
+
+    let after_parent = tb_discord_message_to_at_context::Entity::find()
+    .filter(
+        Condition::all()
+            .add(
+                Expr::col(tb_discord_message_to_at_context::Column::AiMsgId).eq(continue_context)
+            )
+            .add(
+                Expr::col(tb_discord_message_to_at_context::Column::UpdateAt).gt(parent_context.last().unwrap().created_at.to_utc())
+            )
+    )
+    .all(&db)
+    .await
+    .unwrap();
+
+
+    let there_is_next_context = after_parent.len() > 0;
     LOGGER.log(LogLevel::Debug, &format!("there_is_next_context: {:?}", there_is_next_context));
     if there_is_next_context {
         // 컨텍스트 분기를 실행해야 함.
-        let parent_context = if context_info.len() > 0 && ai_context.len() > 0 {
-            let mut inherited_parent = context_info.last().unwrap().0.parent_context.clone();
-            inherited_parent.push(ai_context.last().unwrap().ai_context_id as i64);
-            inherited_parent.iter().map(|x| *x).collect::<Vec<i64>>()
+        let parent_context = if ai_contexts.len() > 0 {
+            let mut parent_context = ai_contexts.clone();
+            parent_context.push(continue_context);
+            parent_context
         } else {
-            [].to_vec()
+            vec![]
         };
 
         let insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
@@ -616,17 +618,32 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         continue_context = insert_context.id as i64;
     }
 
+    let _insert_user_and_bot_talk = tb_context_to_msg_id::Entity::insert_many(
+        vec![
+            tb_context_to_msg_id::ActiveModel {
+                ai_msg: sea_orm::Set(_insert_context_desc[0].id as i64),
+                ai_context: sea_orm::Set(continue_context),
+                ..Default::default()
+            },
+            tb_context_to_msg_id::ActiveModel {
+                ai_msg: sea_orm::Set(_insert_context_desc[1].id as i64),
+                ai_context: sea_orm::Set(continue_context),
+                ..Default::default()
+            }
+        ]).exec(&db)
+        .await
+        .unwrap();
+
+
     let ai_context_discord_messages = send_msgs.iter().map(|msg| {
         AiContextDiscordMessageModel {
             discord_message: sea_orm::Set(msg.id.get() as i64),
-            ai_context_id: sea_orm::Set(continue_context),
             ai_msg_id: sea_orm::Set(_insert_context_desc[1].id),
             ..Default::default()
         }
     }).collect::<Vec<_>>();
     let insert_user_msg_to_context =  AiContextDiscordMessageModel {
         discord_message: sea_orm::Set(calling_msg.id.get() as i64),
-        ai_context_id: sea_orm::Set(continue_context),
         ai_msg_id: sea_orm::Set(_insert_context_desc[0].id),
         ..Default::default()
     };

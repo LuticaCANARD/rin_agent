@@ -15,13 +15,13 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::tb_discord_message_to_at_context::Entity")]
-    TbDiscordMessageToAtContext,
+    #[sea_orm(has_many = "super::tb_context_to_msg_id::Entity")]
+    TbContextToMsgId,
 }
 
-impl Related<super::tb_discord_message_to_at_context::Entity> for Entity {
+impl Related<super::tb_context_to_msg_id::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::TbDiscordMessageToAtContext.def()
+        Relation::TbContextToMsgId.def()
     }
 }
 
