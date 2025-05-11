@@ -5,15 +5,16 @@ mod api;
 mod libs;
 mod setting;
 mod utils;
+#[cfg(test)] mod tests;
 #[macro_use] extern crate rocket;
 use api::routers::get_rocket;
 use model::db::driver::connect_to_db;
-
 use libs::logger::{self, LOGGER,LogLevel};
 use tokio::task;
 use tokio::signal;
 use std::sync::Arc;
 use tokio::sync::Notify;
+
 
 async fn fn_discord_thread() {
     
