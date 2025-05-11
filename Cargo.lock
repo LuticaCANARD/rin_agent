@@ -2395,6 +2395,7 @@ dependencies = [
  "dotenv",
  "entity",
  "lazy_static",
+ "libc",
  "reqwest 0.12.15",
  "rocket",
  "sea-orm",
