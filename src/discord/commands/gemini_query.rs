@@ -162,41 +162,36 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 use_pro
             ).await;
             typing.stop();
-            let inserted_user_question = AiContextModel {
-                user_id: sea_orm::Set(_options.user.id.get() as i64),
-                context: sea_orm::Set(str_query),
-                guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
-                channel_id: sea_orm::Set(_options.channel_id.get() as i64),
-                by_bot: sea_orm::Set(false),
-                ..Default::default()
-            };
 
+            //------- DB Action --------
             let db = DB_CONNECTION_POOL.get();
             if db.is_none() {
                 LOGGER.log(LogLevel::Error, "DB Connection Error");
                 return Err(serenity::Error::Other(DISCORD_DB_ERROR));
             }
             let db = db.unwrap().clone();
-            let response_record = AiContextModel {
-                user_id: sea_orm::Set(_options.user.id.get() as i64),
-                context: sea_orm::Set(response.discord_msg),
-                guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
-                channel_id: sea_orm::Set(_options.channel_id.get() as i64),
-                by_bot: sea_orm::Set(true),
-                ..Default::default()
-            };
-
-            
-            let insert_user_and_bot_talk: Vec<tb_ai_context::Model> = AiContextEntity::insert_many(
-                vec![
-                    inserted_user_question,
-                ]).add(response_record)
+            let insert_user_and_bot_talk: Vec<tb_ai_context::Model> = AiContextEntity::insert_many(vec![
+                AiContextModel {
+                    user_id: sea_orm::Set(_options.user.id.get() as i64),
+                    context: sea_orm::Set(str_query),
+                    guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
+                    channel_id: sea_orm::Set(_options.channel_id.get() as i64),
+                    by_bot: sea_orm::Set(false),
+                    ..Default::default()
+                },AiContextModel {
+                    user_id: sea_orm::Set(_options.user.id.get() as i64),
+                    context: sea_orm::Set(response.discord_msg),
+                    guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
+                    channel_id: sea_orm::Set(_options.channel_id.get() as i64),
+                    by_bot: sea_orm::Set(true),
+                    ..Default::default()
+                }])
                 .exec_with_returning_many(&db)
                 .await
                 .unwrap();
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", insert_user_and_bot_talk));
 
-            let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
+            let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
                 guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                 root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
                 parent_context: sea_orm::Set([].to_vec()),
@@ -207,44 +202,41 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             .await
             .unwrap();
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted with Context: {:?}", make_context));
-            
-            let inserted_msg_context_user = tb_context_to_msg_id::ActiveModel {
-                ai_msg: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
-                ai_context: sea_orm::Set(make_context.id as i64),
-                ..Default::default()
-            };
-            let inserted_msg_context_bot = tb_context_to_msg_id::ActiveModel {
-                ai_msg: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
-                ai_context: sea_orm::Set(make_context.id as i64),
-                ..Default::default()
-            };
-            let _insert_context = tb_context_to_msg_id::Entity::insert_many(vec![
-                inserted_msg_context_user,
-                inserted_msg_context_bot,
-            ])
+            let _insert_context = tb_context_to_msg_id::Entity::insert_many(
+                vec![
+                    tb_context_to_msg_id::ActiveModel {
+                    ai_msg: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
+                    ai_context: sea_orm::Set(make_context.id as i64),
+                    ..Default::default()
+                },
+                    tb_context_to_msg_id::ActiveModel {
+                    ai_msg: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
+                    ai_context: sea_orm::Set(make_context.id as i64),
+                    ..Default::default()
+                }]
+            )
             .exec(&db)
             .await
             .unwrap();
-            let ai_context_discord_messages = send_msgs.iter().map(|msg| {
+            // 유저가 디코에 보낸 질문
+            let insert_user_msg_to_context = AiContextDiscordMessageModel {
+                discord_message: sea_orm::Set(_options.id.get() as i64),
+                ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
+                ..Default::default()
+            };
+            let ai_context_discord_messages = send_msgs.iter().map(|msg| { // AI가 디코에 보낸 답
                 AiContextDiscordMessageModel {
                     discord_message: sea_orm::Set(msg.id.get() as i64),
                     ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
                     ..Default::default()
                 }
             }).collect::<Vec<_>>();
-            let insert_user_msg_to_context =  AiContextDiscordMessageModel {
-                discord_message: sea_orm::Set(_options.id.get() as i64),
-                ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
-                ..Default::default()
-            };
             let _context_inserted = AiContextDiscordMessageEntity::insert_many(ai_context_discord_messages)
-            .add(insert_user_msg_to_context)
+                .add(insert_user_msg_to_context)
                 .exec(&db)
                 .await
                 .unwrap();
-
-            // _options.channel_id.say(_ctx, response).await?;
-
+            // 끝.
             return Ok("ok".to_string());
 
         },
@@ -276,8 +268,13 @@ pub fn register() -> CreateCommand {
 pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let channel_lock = _ctx.http.get_channel(calling_msg.channel_id).await.unwrap();
     let typing = channel_lock.guild().unwrap().start_typing(&_ctx.http);
-    let db = DB_CONNECTION_POOL.get().unwrap().clone();
-    LOGGER.log(LogLevel::Debug, &format!("DB Connection: {:?}", db));
+    let db = DB_CONNECTION_POOL.get();
+    if db.is_none() {
+        LOGGER.log(LogLevel::Error, "DB Connection Error");
+        calling_msg.channel_id.say(_ctx, "DB Connection Error").await.unwrap();
+        return;
+    }
+    let db = db.unwrap().clone();
     let msg_ref_id = calling_msg.referenced_message.clone().unwrap().id.get() as i64;
     LOGGER.log(LogLevel::Debug, &format!("msg_ref_id: {:?}", msg_ref_id));
 
@@ -291,6 +288,13 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         ),
         Alias::new("rel_discord_ctx"),
     )
+    .join_as(
+        JoinType::InnerJoin,
+        Into::<sea_orm::RelationDef>::into(
+            AiContextEntity::belongs_to(tb_context_to_msg_id::Entity)
+                .from(<entity::prelude::TbAiContext as EntityTrait>::Column::Id)
+                .to(tb_context_to_msg_id::Column::AiMsg)
+        ), Alias::new("rel_context"))
     .filter(
         Expr::col((
             Alias::new("rel_discord_ctx"),
@@ -298,59 +302,34 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         ))
         .eq(msg_ref_id)
     )
-    .order_by(<entity::prelude::TbAiContext as EntityTrait>::Column::Id, sea_orm::Order::Asc)
-    .all(&db)
-    .await
-    .unwrap();
-
-    LOGGER.log(LogLevel::Debug, &format!("parent_context: {:?}", parent_context));
-
-    let ai_context = AiContextDiscordMessageEntity::find()
-    .join_as(JoinType::InnerJoin,
-        Into::<sea_orm::RelationDef>::into(
-            AiContextDiscordMessageEntity::belongs_to(tb_context_to_msg_id::Entity)
-                .from(TbDiscordMessageToAtContext::AiMsgId)
-                .to(tb_context_to_msg_id::Column::AiMsg)
-        ), Alias::new("rel_discord_ctx") )
-    .filter(
-        Condition::all()
-            .add(
-                Expr::col(TbDiscordMessageToAtContext::DiscordMessage)
-                .eq(msg_ref_id)
-            )
-    )
-    .distinct_on(vec![
-        (Alias::new("rel_discord_ctx"), tb_context_to_msg_id::Column::AiContext)
-    ])
+    .order_by(<entity::prelude::TbAiContext as EntityTrait>::Column::Id, sea_orm::Order::Desc)
     .find_also_related(tb_context_to_msg_id::Entity)
     .all(&db)
     .await
     .unwrap();
 
-    let ai_context_parent = AiContextDiscordEntity::find()
+    LOGGER.log(LogLevel::Debug, &format!("parent_context: {:?}", parent_context));
+    
+    let ai_context_info = tb_discord_ai_context::Entity::find()
     .filter(
-        Condition::all()
-            .add(
-                Expr::col(tb_discord_ai_context::Column::Id).eq(ai_context.clone().last().unwrap().1.clone().unwrap().ai_context as i64)
-            )
+        Expr::col(tb_discord_ai_context::Column::Id)
+        .eq(parent_context.last().unwrap().1.clone().unwrap().ai_context as i64)
     )
-    .all(&db)
+    .one(&db)
     .await
     .unwrap();
 
-
-
-
-    if ai_context.len() == 0 {
+    if ai_context_info.is_none() {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
         typing.stop();
         return;
     }
-    LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context));
-    let ai_contexts = ai_context_parent.iter().map(|x| x.parent_context.clone()).collect::<Vec<Vec<i64>>>();
-    let mut ai_contexts = ai_contexts.iter().flat_map(|x| x.iter()).map(|x| *x).collect::<Vec<i64>>();
-    ai_contexts.push(ai_context.last().unwrap().1.clone().unwrap().ai_context as i64);
-    let ai_contexts = ai_contexts; 
+    let ai_context_info = ai_context_info.unwrap();
+    let mut need_load_context_list = ai_context_info.parent_context.clone();
+    need_load_context_list.push(ai_context_info.id as i64);
+    let need_load_context_list = need_load_context_list.clone();
+    LOGGER.log(LogLevel::Debug, &format!("AI Context: {:?}", ai_context_info));
+
     let before_messages:QueryDBVector = tb_ai_context::Entity::find()
     .join_as(
         JoinType::LeftJoin,
@@ -384,7 +363,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             Alias::new("rel_context"),
             tb_context_to_msg_id::Column::AiContext,
         ))
-        .is_in(ai_contexts.clone())
+        .is_in(need_load_context_list.clone())
     )
     .order_by(tb_ai_context::Column::Id, sea_orm::Order::Asc)
     .find_also_related(tb_image_attach_file::Entity)
@@ -393,22 +372,17 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     .await
     .unwrap();
 
-    
     LOGGER.log(LogLevel::Debug, &format!("before_messages: {:?}", before_messages));
 
-    let context_using_pro = if before_messages.is_empty() {
-        false
-    } else {
-        ai_context_parent.last().unwrap().using_pro_model
-    };
+    let context_using_pro = ai_context_info.using_pro_model;
     LOGGER.log(LogLevel::Debug, &format!("context_info: {:?}", before_messages));
 
-    let ai_context_map = ai_context.iter().map(|x| (
-        x.1.clone().unwrap().ai_context as i64
+    let ai_context_map = need_load_context_list.iter().map(|x| (
+        x.clone() as i64
     )).collect::<hash_set::HashSet<i64>>();
-    let mut last_context_id = ai_context.last().unwrap().1.clone().unwrap().ai_context as i64;
-    let mut last_node: i64 = parent_context.last().unwrap().id as i64;
-    let mut last_time = parent_context.last().unwrap().created_at.to_utc();
+    let mut last_context_id = ai_context_info.id as i64;
+    let mut last_node: i64 = parent_context.last().unwrap().0.id as i64;
+    let mut last_time = parent_context.last().unwrap().0.created_at.to_utc();
     let mut before_messages:Vec<GeminiChatChunk> = before_messages
         .iter()
         .rev()
@@ -551,73 +525,30 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             image_id = Some(image_inserted.image_id);
         }
     }
-    let inserted = AiContextModel {
-        user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
-        context: sea_orm::Set(calling_msg.content.clone()),
-        guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
-        channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
-        by_bot: sea_orm::Set(false),
-        image_file_id: sea_orm::Set(image_id),
-        ..Default::default()
-    };
-    let response_record = AiContextModel {
-        user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
-        context: sea_orm::Set(ai_response.discord_msg.clone()),
-        guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
-        channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
-        by_bot: sea_orm::Set(true),
-        image_file_id: sea_orm::Set(None),
-        ..Default::default()
-    };
-    let _insert_context_desc = AiContextEntity::insert(inserted)
-        .add(response_record)
+    let _insert_context_desc = AiContextEntity::insert_many(
+    vec![AiContextModel { // 유저 질의
+                    user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
+                    context: sea_orm::Set(calling_msg.content.clone()),
+                    guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
+                    channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
+                    by_bot: sea_orm::Set(false),
+                    image_file_id: sea_orm::Set(image_id),
+                    ..Default::default()
+                }, AiContextModel { // AI 응답
+                    user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
+                    context: sea_orm::Set(ai_response.discord_msg.clone()),
+                    guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
+                    channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
+                    by_bot: sea_orm::Set(true),
+                    image_file_id: sea_orm::Set(None),
+                    ..Default::default()
+                } ]
+        )
         .exec_with_returning_many(&db)
         .await
         .unwrap();
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
-
-    let mut continue_context = ai_contexts.last().unwrap().clone();
-
-    let after_parent = tb_discord_message_to_at_context::Entity::find()
-    .filter(
-        Condition::all()
-            .add(
-                Expr::col(tb_discord_message_to_at_context::Column::AiMsgId).eq(continue_context)
-            )
-            .add(
-                Expr::col(tb_discord_message_to_at_context::Column::UpdateAt).gt(parent_context.last().unwrap().created_at.to_utc())
-            )
-    )
-    .all(&db)
-    .await
-    .unwrap();
-
-
-    let there_is_next_context = after_parent.len() > 0;
-    LOGGER.log(LogLevel::Debug, &format!("there_is_next_context: {:?}", there_is_next_context));
-    if there_is_next_context {
-        // 컨텍스트 분기를 실행해야 함.
-        let parent_context = if ai_contexts.len() > 0 {
-            let mut parent_context = ai_contexts.clone();
-            parent_context.push(continue_context);
-            parent_context
-        } else {
-            vec![]
-        };
-
-        let insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
-        guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
-        root_msg: sea_orm::Set(send_msgs[0].id.get() as i64),
-        parent_context: sea_orm::Set(parent_context),
-        using_pro_model: sea_orm::Set(context_using_pro),
-        ..Default::default()
-        }).exec_with_returning(&db)
-        .await
-        .unwrap();
-
-        continue_context = insert_context.id as i64;
-    }
-
+    let mut continue_context = ai_context_info.id as i64;
     let _insert_user_and_bot_talk = tb_context_to_msg_id::Entity::insert_many(
         vec![
             tb_context_to_msg_id::ActiveModel {
