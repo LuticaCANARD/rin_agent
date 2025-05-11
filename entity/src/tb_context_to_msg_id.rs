@@ -11,15 +11,6 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(has_one = "super::tb_ai_context::Entity")]
-    TbAiContext,
-}
-
-impl Related<super::tb_ai_context::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::TbAiContext.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -21,14 +21,6 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::tb_context_to_msg_id::Entity",
-        from = "Column::Id",
-        to = "super::tb_context_to_msg_id::Column::AiMsg",
-        on_update = "NoAction",
-        on_delete = "NoAction"
-    )]
-    TbContextToMsgId,
-    #[sea_orm(
         belongs_to = "super::tb_image_attach_file::Entity",
         from = "Column::ImageFileId",
         to = "super::tb_image_attach_file::Column::ImageId",
@@ -36,12 +28,6 @@ pub enum Relation {
         on_delete = "NoAction"
     )]
     TbImageAttachFile,
-}
-
-impl Related<super::tb_context_to_msg_id::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::TbContextToMsgId.def()
-    }
 }
 
 impl Related<super::tb_image_attach_file::Entity> for Entity {
