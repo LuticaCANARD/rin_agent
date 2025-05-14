@@ -1,4 +1,5 @@
 use rocket::{get, post, Config};
+use super::super::api::statius::get_status;
 
 use std::sync::LazyLock;
 
@@ -22,6 +23,7 @@ pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
         .mount("/", routes![test_index])
         .mount("/query", routes![test_query])
+        .mount("/status", routes![get_status])
         .register("/", catchers![not_found])
         
         
