@@ -122,11 +122,12 @@ impl GeminiClientTrait for GeminiClient {
 
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
-
-        let commnds = first_candidate.get("userCommand");
-        let commands = match commnds {
+        
+        
+        let user_command = content.get_key_value("userCommand");
+        let commands = match user_command {
             Some(commands) => {
-                let commands = commands.as_array().ok_or("Invalid userCommand format")?;
+                let commands = commands.1.as_array().ok_or("Invalid userCommand format")?;
                 let commands: Vec<String> = commands.iter()
                     .filter_map(|item| item.as_str())
                     .map(|s| s.to_string())

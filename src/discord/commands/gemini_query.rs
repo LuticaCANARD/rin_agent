@@ -103,16 +103,14 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
         send_msgs.push(channel_context.send_message(_ctx,response_msg).await.unwrap());
 
         if message_context.commands.is_some() {
+            LOGGER.log(LogLevel::Debug, &format!("Commands: {:?}", message_context.commands));
             let ll = message_context.commands.clone().unwrap();
-            let msg_string = ll.join("\n");
+            let msg_string = format!("`{}`", ll.join("`\n`"));
             let msg = msg_string.as_str();
             
             let response_msg = CreateMessage::new()
-            .content("생성된 명령어 : ".to_owned()+&msg.to_owned());
-            (channel_context.send_message(_ctx,response_msg).await.unwrap());
-
-
-
+            .content("생성된 명령어 : \n".to_owned() + msg);
+            channel_context.send_message(_ctx,response_msg).await.unwrap();
         }
     }
     
