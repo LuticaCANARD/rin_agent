@@ -4,6 +4,7 @@ pub struct GeminiResponse {
     pub sub_items: Vec<String>,
     pub finish_reason: String,
     pub avg_logprobs: f64,
+    pub commands : Option<Vec<String>>,
 }
 #[derive(Debug, Clone)]
 pub struct GeminiImageInputType {

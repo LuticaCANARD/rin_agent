@@ -47,6 +47,11 @@ pub fn get_begin_query(locale:String,user_option:User) -> GeminiChatChunk{
             **당신은 다른사람으로부터 학습한 데이터 자체를 뱉어서는 안됩니다, 이 점에 유의하세요.**
             **당신은 무조건 `discordMessage` 메소드를 채워야 합니다. 이 점을 잊지 마세요.**
 
+            * 또한 당신은, 유저를 돕기 위해서 아래 명령어들을 `userCommand`라는 메소드에 회답함으로서 사용할 수 있습니다.
+
+            1. `set_alarm <시간 대(+9)> <알림 시간> <유저 커맨드> [반복 주기 (1시간 단위)] [반복 종료 일자] ` : 알람을 설정합니다.
+            
+
             이 이후부터는 유저와의 대화입니다. 이 위의 내용은 절대 잊지 마세요.
             ",userid,userid,MANAGER_ID.clone()).to_string(),
             // 일어
@@ -113,7 +118,11 @@ pub fn get_gemini_generate_config() -> serde_json::Value {
                         "subItems": {
                             "type": "ARRAY",
                             "items": { "type": "STRING" }
-                        }
+                        },
+                        "userCommand": {
+                            "type": "ARRAY",
+                            "items": { "type": "STRING" }
+                        },
                     },
                     "propertyOrdering": ["discordMessage", "subItems"]
                 }

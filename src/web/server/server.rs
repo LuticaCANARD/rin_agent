@@ -13,10 +13,16 @@ pub fn not_found() -> &'static str {
     "404 Not Found"
 }
 
-pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
+#[get("/query")]
+pub fn test_query() -> &'static str {
+    "----------------"
+}
 
+pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
         .mount("/", routes![test_index])
+        .mount("/query", routes![test_query])
         .register("/", catchers![not_found])
+        
         
 }
