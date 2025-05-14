@@ -102,7 +102,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
     
         send_msgs.push(channel_context.send_message(_ctx,response_msg).await.unwrap());
 
-        if message_context.commands.is_some() {
+        if message_context.commands.is_some() && message_context.commands.as_ref().unwrap().len() > 0 {
             LOGGER.log(LogLevel::Debug, &format!("Commands: {:?}", message_context.commands));
             let ll = message_context.commands.clone().unwrap();
             let msg_string = format!("`{}`", ll.join("`\n`"));
