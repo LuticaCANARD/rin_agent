@@ -5,7 +5,7 @@ use base64::Engine;
 use serde_json::json;
 use reqwest::header::{HeaderName, HeaderValue};
 
-use super::types::{GeminiBotToolInputType, GeminiBotTools, GeminiChatChunk};
+use super::types::{GeminiBotToolInputType, GeminiBotToolInputValueType, GeminiBotTools, GeminiChatChunk};
 
 
 
@@ -239,25 +239,29 @@ let mut properties = serde_json::Map::new();
     })
 } 
 
-pub fn translate_to_gemini_param(value: &serde_json::Value) -> GeminiBotToolInputType {
+pub fn translate_to_gemini_param(value: &serde_json::Value) -> GeminiBotToolInputValueType {
     match value {
-        serde_json::Value::String(s) => GeminiBotToolInputType::STRING(s.clone()),
+        serde_json::Value::String(s) => GeminiBotToolInputValueType::STRING(s.clone()),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                GeminiBotToolInputType::INTEGER(i as i32)
+                GeminiBotToolInputValueType::INTEGER(i as i64)
             } else if let Some(f) = n.as_f64() {
-                GeminiBotToolInputType::NUMBER(f as f32)
+                GeminiBotToolInputValueType::NUMBER(f as f64)
             } else {
-                GeminiBotToolInputType::NULL
+                GeminiBotToolInputValueType::NULL
             }
         }
-        serde_json::Value::Bool(b) => GeminiBotToolInputType::BOOLEAN(*b),
-        serde_json::Value::Array(arr) => GeminiBotToolInputType::ARRAY(
+        serde_json::Value::Bool(b) => GeminiBotToolInputValueType::BOOLEAN(*b),
+        serde_json::Value::Array(arr) => GeminiBotToolInputValueType::ARRAY(
             arr.iter()
                 .map(|v| translate_to_gemini_param(v))
                 .collect(),
         ),
-        serde_json::Value::Object(obj) => GeminiBotToolInputType::OBJECT(sea_orm::JsonValue::Object(obj.clone())),
-        _ => GeminiBotToolInputType::NULL,
+        serde_json::Value::Object(obj) => GeminiBotToolInputValueType::OBJECT(
+            obj.iter()
+                .map(|(k, v)| (k.clone(), translate_to_gemini_param(v)))
+                .collect(),
+        ),
+        _ => GeminiBotToolInputValueType::NULL,
     }
 }

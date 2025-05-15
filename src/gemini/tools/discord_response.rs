@@ -31,7 +31,8 @@ pub fn get_command() -> GeminiBotTools {
         parameters: vec![
             GeminiBotToolInput {
                 name: "msg".to_string(),
-                input_type: GeminiBotToolInputType::STRING("주인님께 답할 메시지".to_string()),
+                description: "주인님께 답할 메시지".to_string(),
+                input_type: GeminiBotToolInputType::STRING,
                 required: true,
             },
         ],

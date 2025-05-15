@@ -48,20 +48,34 @@ pub fn get_command() -> GeminiBotTools {
         parameters: vec![
             GeminiBotToolInput {
                 name: "time".to_string(),
-                input_type: GeminiBotToolInputType::STRING("Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS +Timezone(e.g. UTC+9))".to_string()),
+                description: "Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
+                input_type: GeminiBotToolInputType::STRING,
+                required: true,
+            },
+            GeminiBotToolInput {
+                name: "timezone".to_string(),
+                description: "Set the timezone for the alarm (UTC+9 => +9, UTC-1 = -1)".to_string(),
+                input_type: GeminiBotToolInputType::INTEGER,
                 required: true,
             },
             GeminiBotToolInput {
                 name: "message".to_string(),
-                input_type: GeminiBotToolInputType::STRING("알람과 함께 주인님께 보낼 메시지".to_string()),
+                input_type: GeminiBotToolInputType::STRING,
+                description: "알람과 함꼐 주인님꼐 보낼 메시지 혹은, 주인님이 알림에 메모한 사항.".to_string(),
                 required: false,
             },
             GeminiBotToolInput {
                 name: "repeat".to_string(),
-                input_type: GeminiBotToolInputType::STRING("반복 주기(cron 표현식)".to_string()),
+                description: "반복 주기(cron 표현식)".to_string(),
+                input_type: GeminiBotToolInputType::STRING,
                 required: false,
             },
-
+            GeminiBotToolInput {
+                name: "end_date".to_string(),
+                description: "종료되는 일자. (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
+                input_type: GeminiBotToolInputType::STRING,
+                required: false,
+            },
         ],
         action: |params| Box::pin(async move { set_alarm(params).await }),
     }

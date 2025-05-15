@@ -6,7 +6,7 @@ edition = "2021"
 [workspace]
 members = [
     "entity",
-    # "migration",
+    "migration",
     ".", # This is the main crate
 ]
 
