@@ -1,3 +1,4 @@
+use std::collections::hash_map;
 use std::env;
 
 use reqwest::Client;
@@ -6,8 +7,11 @@ use serenity::json;
 
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::setting::gemini_setting::{get_gemini_generate_config, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
+use crate::setting::gemini_setting::{get_begin_query, get_gemini_bot_tools, get_gemini_generate_config, GEMINI_BOT_TOOLS, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
+
+use super::types::{GeminiBotToolInput, GeminiBotToolInputType, GeminiBotToolInputValue};
+use super::utils::translate_to_gemini_param;
 
 pub struct GeminiClient {
     net_client: Client
@@ -15,13 +19,18 @@ pub struct GeminiClient {
 
 pub trait GeminiClientTrait {
     fn new() -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,use_pro:bool) -> Result<GeminiResponse, String>;
-    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>) -> serde_json::Value {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool) -> Result<GeminiResponse, String>;
+    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk) -> serde_json::Value {
         json!({
             "contents": [
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ],
-            "generationConfig": get_gemini_generate_config()
+            "systemInstruction": generate_gemini_user_chunk(begin_query),
+            "generationConfig": get_gemini_generate_config(),
+            "tools": get_gemini_bot_tools(),
+            "toolConfig":{
+                "functionCallingConfig": {"mode": "ANY"},
+            }
         })
     }
 }
@@ -65,7 +74,7 @@ impl GeminiClientTrait for GeminiClient {
 * 
 */
 
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,use_pro:bool) -> Result<GeminiResponse, String> {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
         let url = format!(
@@ -73,7 +82,7 @@ impl GeminiClientTrait for GeminiClient {
             if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH },
             api_key
         );
-        let objected_query = self.generate_to_gemini_query(query);
+        let objected_query = self.generate_to_gemini_query(query,begin_query);
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -82,66 +91,150 @@ impl GeminiClientTrait for GeminiClient {
             .await
             .map_err(|e| e.to_string())?;
         let response_result = response.text().await.unwrap();
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Response: {}", response_result));
         let response_str = response_result;
         let response_json: serde_json::Value = serde_json::from_str(&response_str).map_err(|e| e.to_string())?;
+        if response_json["error"].is_object() {
+            let error_message = response_json["error"]["message"].as_str().unwrap_or("Unknown error");
+            LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
+            return Err(format!("Gemini API > Error: {}", error_message));
+        }
         let candidates = response_json["candidates"].as_array().ok_or("DInvalid response format")?;
         if candidates.is_empty() {
             return Err("No candidates found in response".to_string());
         }
         let first_candidate = &candidates[0];
         let content = first_candidate["content"].as_object().ok_or("CInvalid response format")?;
-        let parts = content["parts"].as_array().ok_or("BInvalid response format")?;
-        let last_end = parts.len() - 1;
-        let last_part = &parts[last_end];
-        let text = last_part["text"].as_str().ok_or("AInvalid response format")?;
+        let mut gemini_responese_part = content["parts"].as_array().ok_or("BInvalid response format")?.clone();
+        let mut parts: Vec<Value> = vec![];
 
-        let text_objed = serde_json::from_str::<serde_json::Value>(text).map_err(|e| e.to_string())?;
-        let text = text_objed.as_array().ok_or("Invalid response format")?;
-        if text.is_empty() {
-            return Err("No text found in response".to_string());
+        
+        while gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str() != Some("response_msg") {
+            let fn_obj = gemini_responese_part.last();
+            let argus = gemini_responese_part.last().unwrap()["functionCall"]["args"].as_object().ok_or("Invalid function call format")?;
+            let origin_argu = argus.clone();
+            let argus = argus.iter()
+                .map(|(k, v)| {
+                    let arg = translate_to_gemini_param(v);
+                    let arg = GeminiBotToolInputValue {
+                        name: k.clone(),
+                        value: arg
+                    };
+                    (k.clone(), arg)
+                })
+                .collect::<hash_map::HashMap<String, GeminiBotToolInputValue>>();
+            let fn_name = gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str().ok_or("Invalid function name")?;
+            let fn_name = fn_name.to_string();
+            let fn_res =  (GEMINI_BOT_TOOLS.get(fn_obj.unwrap()["functionCall"]["name"].as_str().unwrap()).ok_or("Invalid function name")?.action)(argus).await;
+            parts.push(
+                json!({"role": "model",
+                    "parts": [{
+                        "functionCall":{
+                            "name": fn_name,
+                            "args": origin_argu
+                        }
+                    }]
+                })
+            );
+            if fn_res.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", fn_res.as_ref().err().unwrap()));
+                parts.push(
+                    json!({"role": "user",
+                        "parts": [{
+                            "functionResponse":{
+                                "name": fn_name,
+                                "response": {
+                                    "error": {"message": fn_res.as_ref().err().unwrap()}
+                                }
+                            }
+                        }]
+                    })
+                );
+            } else {
+                let fn_res = fn_res.unwrap();
+                let fn_res = serde_json::to_value(fn_res).map_err(|e| e.to_string())?;
+                parts.push(
+                    json!({ 
+                            "role": "user", 
+                            "parts": [{
+                                "functionResponse":{
+                                "name": fn_name,
+                                "response": {
+                                    "result": fn_res
+                                }
+                            }
+                        }]
+                    })
+                );
+            }
+            let mut res_objected_query = objected_query.clone();
+            let obj_part = json!(parts);
+            let mut a = res_objected_query["contents"].as_array().unwrap().clone();
+            a.push(obj_part);
+            res_objected_query["contents"] = json!(a);
+
+            
+
+            LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Request: {}", res_objected_query.to_string()));
+            let response = self.net_client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(res_objected_query.to_string())
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+            let response_result = response.text().await.unwrap();
+            LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response: {}", response_result));
+            let response_result: Result<Value, String> = serde_json::from_str(&response_result).map_err(|e| e.to_string());
+            if response_result.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", response_result.as_ref().err().unwrap()));
+                return Err(format!("Gemini API > Error: {}", response_result.as_ref().err().unwrap()));
+            }
+            let response_result = response_result.unwrap();
+            if response_result["error"].is_object() {
+                let error_message = response_result["error"]["message"].as_str().unwrap_or("Unknown error");
+                LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
+                return Err(format!("Gemini API > Error: {}", error_message));
+            }
+            let candidates = response_result["candidates"].as_array().ok_or("Invalid response format")?;
+            if candidates.is_empty() {
+                return Err("No candidates found in response".to_string());
+            }
+            let first_candidate = &candidates[0];
+            let content = first_candidate["content"]["parts"].as_array().ok_or("Invalid response format")?.last().unwrap();
+            gemini_responese_part.push(content.clone());
+
         }
+        
+
+        let last_part = &gemini_responese_part.last().unwrap()["functionCall"];
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response - last msg: {}", last_part.to_string()));
+        let last_argus = last_part["args"].as_object().ok_or("Invalid function call format")?;
+
+        let text = last_argus["msg"].as_str().ok_or("AInvalid response format")?;
 
         let mut sub_items:&Vec<Value> = &vec![];
         if text.len() < 1 {
             return Err("No text found in response".to_string());
         }
-        let content = text[text.len()-1].as_object().ok_or("1Invalid response format")?;
-        if content.get_key_value("subItems") != None  {
+        if last_argus.get_key_value("subItems") != None  {
             sub_items = content["subItems"].as_array().ok_or("2Invalid response format")?;
         }
         let sub_items: Vec<String> = sub_items.iter()
             .filter_map(|item| item.as_str())
             .map(|s| s.to_string())
             .collect();
-        let discord_msg = content.get_key_value("discordMessage");
-        if discord_msg == None {
-            LOGGER.log(LogLevel::Error, "Gemini API > No discordMessage found in response");
-            return Err("No discordMessage found in response".to_string());
-        }
-        let discord_msg = discord_msg.unwrap().1.as_str().ok_or("Invalid discordMessage format")?.to_string();
+        let discord_msg = text.to_string();
 
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
-        
-        
-        let user_command = content.get_key_value("userCommand");
-        let commands = match user_command {
-            Some(commands) => {
-                let commands = commands.1.as_array().ok_or("Invalid userCommand format")?;
-                let commands: Vec<String> = commands.iter()
-                    .filter_map(|item| item.as_str())
-                    .map(|s| s.to_string())
-                    .collect();
-                Some(commands)
-            }
-            None => None,
-        };
+
         let gemini_response = GeminiResponse {
             discord_msg,
             sub_items,
             finish_reason,
             avg_logprobs,
-            commands,
+
         };
 
         Ok(gemini_response)

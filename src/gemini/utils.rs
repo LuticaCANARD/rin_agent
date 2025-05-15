@@ -5,7 +5,7 @@ use base64::Engine;
 use serde_json::json;
 use reqwest::header::{HeaderName, HeaderValue};
 
-use super::types::GeminiChatChunk;
+use super::types::{GeminiBotToolInputType, GeminiBotTools, GeminiChatChunk};
 
 
 
@@ -200,4 +200,64 @@ pub async fn upload_image_to_gemini(image: GeminiImageInputType,display_name:Str
         file_url: Some(file_uri),
         mime_type: image.mime_type,
     })
+}
+
+pub fn generate_fns_to_gemini(tool:&GeminiBotTools) -> serde_json::Value {
+let mut properties = serde_json::Map::new();
+    let mut required_param = Vec::new();
+
+    for parameter in &tool.parameters {
+        // 각 파라미터를 properties 객체에 추가
+        properties.insert(
+            parameter.name.clone(),
+            {
+                let mut schema = parameter.input_type.to_schema();
+                if let Some(desc) = schema.get_mut("description") {
+                    // 이미 description이 있으면 덮어쓰기
+                    *desc = serde_json::Value::String(parameter.description.clone());
+                } else {
+                    schema.as_object_mut().unwrap().insert(
+                        "description".to_string(),
+                        serde_json::Value::String(parameter.description.clone()),
+                    );
+                }
+                schema
+            }
+        );
+        if parameter.required {
+            required_param.push(parameter.name.clone());
+        }
+    }
+    json!({
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": {
+            "type": "object",
+            "properties": properties,
+            "required": required_param,
+        }
+    })
+} 
+
+pub fn translate_to_gemini_param(value: &serde_json::Value) -> GeminiBotToolInputType {
+    match value {
+        serde_json::Value::String(s) => GeminiBotToolInputType::STRING(s.clone()),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                GeminiBotToolInputType::INTEGER(i as i32)
+            } else if let Some(f) = n.as_f64() {
+                GeminiBotToolInputType::NUMBER(f as f32)
+            } else {
+                GeminiBotToolInputType::NULL
+            }
+        }
+        serde_json::Value::Bool(b) => GeminiBotToolInputType::BOOLEAN(*b),
+        serde_json::Value::Array(arr) => GeminiBotToolInputType::ARRAY(
+            arr.iter()
+                .map(|v| translate_to_gemini_param(v))
+                .collect(),
+        ),
+        serde_json::Value::Object(obj) => GeminiBotToolInputType::OBJECT(sea_orm::JsonValue::Object(obj.clone())),
+        _ => GeminiBotToolInputType::NULL,
+    }
 }

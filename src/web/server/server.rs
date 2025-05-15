@@ -21,9 +21,11 @@ pub fn test_query() -> &'static str {
 
 pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
-        .mount("/", routes![test_index])
-        .mount("/query", routes![test_query])
-        .mount("/status", routes![get_status])
+        .mount("/", routes![
+            test_index,
+            get_status,
+            test_query
+        ])
         .register("/", catchers![not_found])
         
         

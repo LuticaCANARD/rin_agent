@@ -102,16 +102,6 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
     
         send_msgs.push(channel_context.send_message(_ctx,response_msg).await.unwrap());
 
-        if message_context.commands.is_some() && message_context.commands.as_ref().unwrap().len() > 0 {
-            LOGGER.log(LogLevel::Debug, &format!("Commands: {:?}", message_context.commands));
-            let ll = message_context.commands.clone().unwrap();
-            let msg_string = format!("`{}`", ll.join("`\n`"));
-            let msg = msg_string.as_str();
-            
-            let response_msg = CreateMessage::new()
-            .content("생성된 명령어 : \n".to_owned() + msg);
-            channel_context.send_message(_ctx,response_msg).await.unwrap();
-        }
     }
     
     send_msgs
@@ -151,7 +141,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let response = 
             gemini_client::GeminiClient::new()
                 .send_query_to_gemini(vec![
-                    get_begin_query(_options.locale.clone(), _options.user.clone()),
                     GeminiChatChunk{
                         query: str_query.clone(),
                         is_bot: false,
@@ -159,7 +148,9 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         timestamp: chrono::Utc::now().to_string(),
                         user_id: Some(_options.user.id.get().to_string()),
                     }
-                ],use_pro).await;
+                ],
+                &get_begin_query(_options.user.locale.clone().unwrap_or("ko".to_string()),_options.user.id.get().to_string())
+                ,use_pro).await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
                 return Err(SerenityError::Other("Gemini API Error"));
@@ -449,15 +440,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .collect();
 
     let user_locale = user.locale.clone();
-
-    if let Some(user_locale_open) = user_locale {
-        let begin_query = get_begin_query(user_locale_open, user.clone());
-        before_messages.insert(0, begin_query);
-    } else {
-        let begin_query = get_begin_query("ko".to_string(), user.clone());
-        before_messages.insert(0, begin_query);
-
-    }
     LOGGER.log(LogLevel::Debug, &format!("before_messages_filtered: {:?}", before_messages));
     let attachment_user_msg = calling_msg.attachments.clone();
     let mut image = None;
@@ -524,7 +506,10 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     let _push_query: () = before_messages.push(user_msg_current);
     LOGGER.log(LogLevel::Debug, &format!("Sending Query: {:?}", before_messages));
     let ai_response = gemini_client::GeminiClient::new()
-    .send_query_to_gemini(before_messages,context_using_pro).await;
+    .send_query_to_gemini(
+        before_messages,
+        &get_begin_query(user_locale.unwrap_or("ko".to_string()),calling_msg.author.id.get().to_string()),
+        context_using_pro).await;
     if ai_response.is_err() {
         typing.stop();
         LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", ai_response));
