@@ -1,5 +1,7 @@
 use std::collections::hash_map;
-use std::env;
+use std::hash::Hasher;
+use std::{env, hash};
+use std::hash::Hash;
 
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -10,7 +12,7 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::setting::gemini_setting::{get_begin_query, get_gemini_bot_tools, get_gemini_generate_config, GEMINI_BOT_TOOLS, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
-use super::types::{GeminiBotToolInput, GeminiBotToolInputType, GeminiBotToolInputValue};
+use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputType, GeminiBotToolInputValue};
 use super::utils::translate_to_gemini_param;
 
 pub struct GeminiClient {
@@ -107,9 +109,13 @@ impl GeminiClientTrait for GeminiClient {
         let content = first_candidate["content"].as_object().ok_or("CInvalid response format")?;
         let mut gemini_responese_part = content["parts"].as_array().ok_or("BInvalid response format")?.clone();
         let mut parts: Vec<Value> = vec![];
-
+        let mut command_result: Vec<Result<GeminiActionResult,String>> = vec![];
+        let mut command_try_count = 0;
+        let mut hash_command_result = hash::DefaultHasher::new();
+        let mut recent_hash= 0;
         
         while gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str() != Some("response_msg") {
+            
             let fn_obj = gemini_responese_part.last();
             let argus = gemini_responese_part.last().unwrap()["functionCall"]["args"].as_object().ok_or("Invalid function call format")?;
             let origin_argu = argus.clone();
@@ -126,6 +132,7 @@ impl GeminiClientTrait for GeminiClient {
             let fn_name = gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str().ok_or("Invalid function name")?;
             let fn_name = fn_name.to_string();
             let fn_res =  (GEMINI_BOT_TOOLS.get(fn_obj.unwrap()["functionCall"]["name"].as_str().unwrap()).ok_or("Invalid function name")?.action)(argus).await;
+            command_result.push(fn_res.clone());
             parts.push(
                 json!({"role": "model",
                     "parts": [{
@@ -136,36 +143,43 @@ impl GeminiClientTrait for GeminiClient {
                     }]
                 })
             );
-            if fn_res.is_err() {
-                LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", fn_res.as_ref().err().unwrap()));
-                parts.push(
-                    json!({"role": "user",
-                        "parts": [{
-                            "functionResponse":{
-                                "name": fn_name,
-                                "response": {
-                                    "error": {"message": fn_res.as_ref().err().unwrap()}
-                                }
-                            }
-                        }]
-                    })
-                );
-            } else {
-                let fn_res = fn_res.unwrap();
-                let fn_res = serde_json::to_value(fn_res).map_err(|e| e.to_string())?;
-                parts.push(
-                    json!({ 
-                            "role": "user", 
+
+            
+
+
+            match &fn_res {
+                Err(e) => {
+                    LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", e));
+                    parts.push(
+                        json!({"role": "user",
                             "parts": [{
                                 "functionResponse":{
-                                "name": fn_name,
-                                "response": {
-                                    "result": fn_res
+                                    "name": fn_name,
+                                    "response": {
+                                        "error": {"message": e}
+                                    }
                                 }
-                            }
-                        }]
-                    })
-                );
+                            }]
+                        })
+                    );
+                },
+                Ok(ok_res) => {
+                    let fn_res_val = &ok_res.result;
+                    let fn_res_json = serde_json::to_value(fn_res_val).map_err(|e| e.to_string())?;
+                    parts.push(
+                        json!({ 
+                                "role": "user", 
+                                "parts": [{
+                                    "functionResponse":{
+                                    "name": fn_name,
+                                    "response": {
+                                        "result": fn_res_json
+                                    }
+                                }
+                            }]
+                        })
+                    );
+                }
             }
             let mut res_objected_query = objected_query.clone();
             let obj_part = json!(parts);
@@ -175,7 +189,23 @@ impl GeminiClientTrait for GeminiClient {
 
             
 
-            LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Request: {}", res_objected_query.to_string()));
+            let fn_res_unwrapped = fn_res.as_ref().unwrap();
+            let hash_target = if fn_res_unwrapped.error.is_some() {
+                fn_res_unwrapped.error.as_ref().unwrap()
+            } else {
+                fn_res_unwrapped.result_message.as_str()
+            };
+            hash_target.hash(&mut hash_command_result);
+            let hash = hash_command_result.finish();
+            if command_try_count > 10 || hash == recent_hash {
+                LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", "Infinite loop detected"));
+                res_objected_query["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"] = json!(["response_msg"]);
+            } else {
+                command_try_count += 1;
+                recent_hash = hash;
+
+                hash_command_result = hash::DefaultHasher::new();
+            }
             let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -234,7 +264,7 @@ impl GeminiClientTrait for GeminiClient {
             sub_items,
             finish_reason,
             avg_logprobs,
-
+            command_result,
         };
 
         Ok(gemini_response)

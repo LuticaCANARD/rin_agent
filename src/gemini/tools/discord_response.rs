@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
-use crate::gemini::types::{GeminiBotTools, GeminiBotToolInputType, GeminiBotToolInput,GeminiBotToolInputValue};
+use crate::gemini::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputType, GeminiBotToolInputValue, GeminiBotTools};
 
-async fn set_alarm(params : HashMap<String,GeminiBotToolInputValue>) -> Result<serde_json::Value, String> {
+async fn set_alarm(params : HashMap<String,GeminiBotToolInputValue>) -> Result<GeminiActionResult, String> {
 
     let msg = params.get("msg");
     if msg.is_none() {
@@ -12,9 +12,15 @@ async fn set_alarm(params : HashMap<String,GeminiBotToolInputValue>) -> Result<s
     }
     let msg = msg.unwrap().value.to_string();
     // Here you would implement the logic to set the alarm
-    Ok(json!({
-        "res": format!("주인님께 답합니다 : {}", msg),
-    }))
+    Ok(
+        GeminiActionResult{
+            result_message: format!("답했습니다! : {}", msg),
+            result: json!({
+                "res": format!("답했습니다! : {}", msg),
+            }),
+            error: None,
+        }
+    )
     
 }
 
@@ -25,7 +31,6 @@ pub fn get_command() -> GeminiBotTools {
         parameters: vec![
             GeminiBotToolInput {
                 name: "msg".to_string(),
-                description: "주인님께 답할 메시지".to_string(),
                 input_type: GeminiBotToolInputType::STRING("주인님께 답할 메시지".to_string()),
                 required: true,
             },

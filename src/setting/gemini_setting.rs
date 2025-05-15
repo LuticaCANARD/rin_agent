@@ -41,6 +41,8 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
             제공된 대화는 모두 시간 순서대로 정렬된 것이며, 당신은 그 대화의 흐름을 이해하고 있어야 합니다. 
 
             당신이 받는 데이터는 주인님이 가능한 한 많이 선별했으며, 당신은 가능한 한 그 내용에 따라야합니다.
+
+            당신이 받는 메세지는 :
             
             time : (UTC 시간 - 답할 때에는 서울 시간대 (UTC+9) 로 변환하여 답하십시오.)
             sender : (유저의 ID - 0인 경우 당신이 답한 것입니다.)

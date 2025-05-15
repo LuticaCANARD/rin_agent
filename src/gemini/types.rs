@@ -3,10 +3,17 @@ use std::{collections::hash_map, future::Future, pin::Pin};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone)]
+pub struct GeminiActionResult {
+    pub result_message: String,
+    pub result: serde_json::Value,
+    pub error: Option<String>,
+}
+#[derive(Debug, Clone)]
 pub struct GeminiResponse {
     pub discord_msg: String,
     pub sub_items: Vec<String>,
     pub finish_reason: String,
+    pub command_result: Vec<Result<GeminiActionResult,String>>,
     pub avg_logprobs: f64,
 }
 #[derive(Debug, Clone)]
@@ -61,7 +68,6 @@ impl GeminiBotToolInputType {
 }
 pub struct GeminiBotToolInput {
     pub name: String,
-    pub description: String,
     pub input_type: GeminiBotToolInputType,
     pub required: bool,
 }
@@ -75,6 +81,6 @@ pub struct GeminiBotTools {
     pub description: String,
     pub parameters: Vec<GeminiBotToolInput>,    
     pub action: fn(hash_map::HashMap<String, GeminiBotToolInputValue>) 
-        -> Pin<Box<dyn Future<Output = Result<Value,String>> + Send>>
+        -> Pin<Box<dyn Future<Output = Result<GeminiActionResult,String>> + Send>>
     
 }

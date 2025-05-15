@@ -68,6 +68,31 @@ fn context_process(origin:&PastQuery) -> GeminiChatChunk {
 async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool,use_pro:bool)->Vec<Message> {
     let origin_msg = message_context.discord_msg.clone();
     let mut send_msgs:Vec<Message> = vec![];
+    for user_command_res in message_context.command_result.iter() {
+        if user_command_res.is_ok() {
+            let user_command_res = user_command_res.as_ref().unwrap();
+            channel_context.send_message(_ctx,
+                CreateMessage::new()
+                .content(user_command_res.result_message.clone())
+                .embed(CreateEmbed::new()
+                    .title("Gemini API")
+                    .description(user_command_res.result_message.to_string())
+                    .color(0x00FF00)
+                )
+            ).await.unwrap(); 
+        } else {
+            let user_command_res = user_command_res.as_ref().unwrap_err();
+            channel_context.send_message(_ctx,
+                CreateMessage::new()
+                .embed(CreateEmbed::new()
+                    .title("Gemini API")
+                    .description(user_command_res.to_string())
+                    .color(0xFF0000)
+                )
+            ).await.unwrap();
+        }
+    }
+
     let chuncks: Vec<String> = split_text_by_length_and_markdown(&origin_msg, 1950);
     for chunk in 0..chuncks.len() {
         let msg_last = if need_mention_first == true && chunk == 0 {

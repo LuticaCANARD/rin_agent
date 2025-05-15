@@ -214,11 +214,11 @@ let mut properties = serde_json::Map::new();
                 let mut schema = parameter.input_type.to_schema();
                 if let Some(desc) = schema.get_mut("description") {
                     // 이미 description이 있으면 덮어쓰기
-                    *desc = serde_json::Value::String(parameter.description.clone());
+                    *desc = serde_json::Value::String(parameter.input_type.to_string().clone());
                 } else {
                     schema.as_object_mut().unwrap().insert(
                         "description".to_string(),
-                        serde_json::Value::String(parameter.description.clone()),
+                        serde_json::Value::String(parameter.input_type.to_string().clone()),
                     );
                 }
                 schema
