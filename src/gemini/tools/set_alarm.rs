@@ -29,7 +29,7 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
     };
     let message = format!("{} - {}", message, repeat);
 
-    
+
     Ok(
         GeminiActionResult{
             result_message: message.clone(),
@@ -48,7 +48,7 @@ pub fn get_command() -> GeminiBotTools {
         parameters: vec![
             GeminiBotToolInput {
                 name: "time".to_string(),
-                input_type: GeminiBotToolInputType::STRING("Set the time for the alarm (Format is YY-MM-DD HH:MM:SS)".to_string()),
+                input_type: GeminiBotToolInputType::STRING("Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS +Timezone(e.g. UTC+9))".to_string()),
                 required: true,
             },
             GeminiBotToolInput {
