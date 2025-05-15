@@ -1,4 +1,4 @@
-use rocket::{get, post, Config};
+use rocket::{fs::NamedFile, get, http::Status, post, Config};
 use super::super::api::statius::get_status;
 
 use std::sync::LazyLock;
@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 #[get("/")]
 pub async fn test_index() -> &'static str {
-    "Hello, world!"
+    "Hello, this is Rin Agent API"
 }
 
 #[catch(404)]
@@ -21,12 +21,11 @@ pub fn test_query() -> &'static str {
 
 pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
-        .mount("/", routes![
+        .mount("/", rocket::fs::FileServer::from("static"))
+        .mount("/api/", routes![
             test_index,
             get_status,
             test_query
         ])
         .register("/", catchers![not_found])
-        
-        
 }
