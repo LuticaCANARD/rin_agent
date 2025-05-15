@@ -99,6 +99,11 @@ pub struct GeminiBotToolInput {
     pub description: String,
     pub input_type: GeminiBotToolInputType,
     pub required: bool,
+    pub format: Option<String>,
+    pub pattern: Option<String>,
+    pub default: Option<GeminiBotToolInputType>,
+    pub enum_values: Option<Vec<GeminiBotToolInputValueType>>,
+    pub example: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct GeminiBotToolInputValue {

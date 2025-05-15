@@ -113,25 +113,6 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
 pub fn get_gemini_generate_config() -> serde_json::Value {
     // Gemini에게 질문을 보낼 때, 어떤 형식으로 질문을 보낼지에 대한 설정을 return
     json!({
-            // "responseMimeType": "application/json",
-            "responseSchema": {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "discordMessage": { "type": "STRING" },
-                        "subItems": {
-                            "type": "ARRAY",
-                            "items": { "type": "STRING" }
-                        },
-                        "userCommand": {
-                            "type": "ARRAY",
-                            "items": { "type": "STRING" }
-                        },
-                    },
-                    "propertyOrdering": ["discordMessage", "subItems"]
-                }
-            },
             "thinkingConfig": {
                 "includeThoughts": true,
             },

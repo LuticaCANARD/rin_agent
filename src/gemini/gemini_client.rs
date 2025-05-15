@@ -24,9 +24,9 @@ pub trait GeminiClientTrait {
     async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool) -> Result<GeminiResponse, String>;
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk) -> serde_json::Value {
         json!({
-            "contents": [
+            "contents": 
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
-            ],
+            ,
             "systemInstruction": generate_gemini_user_chunk(begin_query),
             "generationConfig": get_gemini_generate_config(),
             "tools": get_gemini_bot_tools(),
@@ -84,7 +84,10 @@ impl GeminiClientTrait for GeminiClient {
             if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH },
             api_key
         );
+
         let objected_query = self.generate_to_gemini_query(query,begin_query);
+                        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
+
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
