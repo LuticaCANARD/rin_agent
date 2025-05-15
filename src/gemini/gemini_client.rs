@@ -111,15 +111,20 @@ impl GeminiClientTrait for GeminiClient {
         let mut parts: Vec<Value> = vec![];
         let mut command_result: Vec<Result<GeminiActionResult,String>> = vec![];
         let mut command_try_count = 0;
-        let mut hash_command_result = hash::DefaultHasher::new();
+        let mut hash_command_params = hash::DefaultHasher::new();
         let mut recent_hash= 0;
         
         while gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str() != Some("response_msg") {
-            
+            let mut res_objected_query = objected_query.clone();
             let fn_obj = gemini_responese_part.last();
             let argus = gemini_responese_part.last().unwrap()["functionCall"]["args"].as_object().ok_or("Invalid function call format")?;
             let origin_argu = argus.clone();
-            let argus = argus.iter()
+            hash_command_params.write(fn_obj.unwrap().to_string().as_bytes());
+            let hash_target = hash_command_params.finish();
+            if hash_target != recent_hash {
+                hash_command_params = hash::DefaultHasher::new();
+                recent_hash = hash_target;
+                let argus = argus.iter()
                 .map(|(k, v)| {
                     let arg = translate_to_gemini_param(v);
                     let arg = GeminiBotToolInputValue {
@@ -129,82 +134,67 @@ impl GeminiClientTrait for GeminiClient {
                     (k.clone(), arg)
                 })
                 .collect::<hash_map::HashMap<String, GeminiBotToolInputValue>>();
-            let fn_name = gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str().ok_or("Invalid function name")?;
-            let fn_name = fn_name.to_string();
-            let fn_res =  (GEMINI_BOT_TOOLS.get(fn_obj.unwrap()["functionCall"]["name"].as_str().unwrap()).ok_or("Invalid function name")?.action)(argus).await;
-            command_result.push(fn_res.clone());
-            parts.push(
-                json!({"role": "model",
-                    "parts": [{
-                        "functionCall":{
-                            "name": fn_name,
-                            "args": origin_argu
-                        }
-                    }]
-                })
-            );
-
-            
-
-
-            match &fn_res {
-                Err(e) => {
-                    LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", e));
-                    parts.push(
-                        json!({"role": "user",
-                            "parts": [{
-                                "functionResponse":{
-                                    "name": fn_name,
-                                    "response": {
-                                        "error": {"message": e}
-                                    }
-                                }
-                            }]
-                        })
-                    );
-                },
-                Ok(ok_res) => {
-                    let fn_res_val = &ok_res.result;
-                    let fn_res_json = serde_json::to_value(fn_res_val).map_err(|e| e.to_string())?;
-                    parts.push(
-                        json!({ 
-                                "role": "user", 
+                let fn_name = gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str().ok_or("Invalid function name")?;
+                let fn_name = fn_name.to_string();
+                let fn_res =  (GEMINI_BOT_TOOLS.get(fn_obj.unwrap()["functionCall"]["name"].as_str().unwrap()).ok_or("Invalid function name")?.action)(argus).await;
+                command_result.push(fn_res.clone());
+                parts.push(
+                    json!({"role": "model",
+                        "parts": [{
+                            "functionCall":{
+                                "name": fn_name,
+                                "args": origin_argu
+                            }
+                        }]
+                    })
+                );
+                match &fn_res {
+                    Err(e) => {
+                        LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", e));
+                        parts.push(
+                            json!({"role": "user",
                                 "parts": [{
                                     "functionResponse":{
-                                    "name": fn_name,
-                                    "response": {
-                                        "result": fn_res_json
+                                        "name": fn_name,
+                                        "response": {
+                                            "error": {"message": e}
+                                        }
                                     }
-                                }
-                            }]
-                        })
-                    );
+                                }]
+                            })
+                        );
+                    },
+                    Ok(ok_res) => {
+                        let fn_res_val = &ok_res.result;
+                        let fn_res_json = serde_json::to_value(fn_res_val).map_err(|e| e.to_string())?;
+                        parts.push(
+                            json!({ 
+                                    "role": "user", 
+                                    "parts": [{
+                                        "functionResponse":{
+                                        "name": fn_name,
+                                        "response": {
+                                            "result": fn_res_json
+                                        }
+                                    }
+                                }]
+                            })
+                        );
+                    }
                 }
+                let obj_part = json!(parts);
+                let mut a = res_objected_query["contents"].as_array().unwrap().clone();
+                a.push(obj_part);
+                res_objected_query["contents"] = json!(a);
             }
-            let mut res_objected_query = objected_query.clone();
-            let obj_part = json!(parts);
-            let mut a = res_objected_query["contents"].as_array().unwrap().clone();
-            a.push(obj_part);
-            res_objected_query["contents"] = json!(a);
 
-            
 
-            let fn_res_unwrapped = fn_res.as_ref().unwrap();
-            let hash_target = if fn_res_unwrapped.error.is_some() {
-                fn_res_unwrapped.error.as_ref().unwrap()
-            } else {
-                fn_res_unwrapped.result_message.as_str()
-            };
-            hash_target.hash(&mut hash_command_result);
-            let hash = hash_command_result.finish();
-            if command_try_count > 10 || hash == recent_hash {
+            if command_try_count > 10 || hash_target == recent_hash {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", "Infinite loop detected"));
                 res_objected_query["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"] = json!(["response_msg"]);
             } else {
                 command_try_count += 1;
-                recent_hash = hash;
 
-                hash_command_result = hash::DefaultHasher::new();
             }
             let response = self.net_client
             .post(&url)

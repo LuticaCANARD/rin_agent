@@ -21,7 +21,15 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         format!("Alarm set for {} with message: {}", time, message.unwrap().value.to_string())
     };
 
+    let repeat = params.get("repeat");
+    let repeat = if repeat.is_none() {
+        "No repeat".to_string()
+    } else {
+        format!("Repeat: {}", repeat.unwrap().value.to_string())
+    };
+    let message = format!("{} - {}", message, repeat);
 
+    
     Ok(
         GeminiActionResult{
             result_message: message.clone(),
@@ -47,7 +55,12 @@ pub fn get_command() -> GeminiBotTools {
                 name: "message".to_string(),
                 input_type: GeminiBotToolInputType::STRING("알람과 함께 주인님께 보낼 메시지".to_string()),
                 required: false,
-            }
+            },
+            GeminiBotToolInput {
+                name: "repeat".to_string(),
+                input_type: GeminiBotToolInputType::STRING("반복 주기(cron 표현식)".to_string()),
+                required: false,
+            },
 
         ],
         action: |params| Box::pin(async move { set_alarm(params).await }),
