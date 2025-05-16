@@ -8,3 +8,4 @@ pub mod tb_discord_ai_context;
 pub mod tb_discord_guilds;
 pub mod tb_discord_message_to_at_context;
 pub mod tb_image_attach_file;
+pub mod tb_alarm_model;

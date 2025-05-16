@@ -10,15 +10,15 @@ impl MigrationTrait for Migration {
         manager
         .create_table(
             Table::create()
-                .table(Alarm::Table)
+                .table(TbAlarmModel::Table)
                 .if_not_exists()
-                .col(pk_auto(Alarm::Id))
-                .col(date_time(Alarm::Time))
-                .col(string(Alarm::Message))
-                .col(string_null(Alarm::RepeatCircle))
-                .col(date_time_null(Alarm::RepeatEndAt))
-                .col(date_time(Alarm::CreatedAt))
-                .col(date_time(Alarm::UpdatedAt))
+                .col(pk_auto(TbAlarmModel::Id))
+                .col(date_time(TbAlarmModel::Time))
+                .col(ColumnDef::new(TbAlarmModel::Message).text().not_null())
+                .col(string_null(TbAlarmModel::RepeatCircle).string_len(100)) 
+                .col(date_time_null(TbAlarmModel::RepeatEndAt))
+                .col(date_time(TbAlarmModel::CreatedAt))
+                .col(date_time(TbAlarmModel::UpdatedAt))
                 .to_owned(),
         ).await
     }
@@ -27,12 +27,13 @@ impl MigrationTrait for Migration {
         // Replace the sample below with your own migration scripts
         
         manager
-            .drop_table(Table::drop().table(Alarm::Table).to_owned())
+            .drop_table(Table::drop().table(TbAlarmModel::Table).to_owned())
             .await
     }
 }
+
 #[derive(DeriveIden)]
-enum Alarm {
+enum TbAlarmModel {
     Table,
     Id,
     Time,
