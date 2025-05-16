@@ -51,11 +51,13 @@ pub fn get_command() -> GeminiBotTools {
                 description: "Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
                 input_type: GeminiBotToolInputType::STRING,
                 required: true,
-                format: Some("2024-03-21 12:00:00".to_string()),
+                format: Some("date-time".to_string()),
+                //Some("2024-03-21 12:00:00".to_string()),
                 default: None,
                 enum_values: None,
                 example: None,
-                pattern: Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
+                pattern: None
+                //Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
 
             },
             GeminiBotToolInput {
@@ -63,11 +65,12 @@ pub fn get_command() -> GeminiBotTools {
                 description: "Set the timezone for the alarm (UTC+9 => +9, UTC-1 = -1)".to_string(),
                 input_type: GeminiBotToolInputType::INTEGER,
                 required: true,
-                format: Some("UTC+9 => +9, UTC-1 = -1".to_string()),
+                format: Some("int32".to_string()),
                 default: None,
                 enum_values: None,
                 example: Some("UTC+9 => +9, UTC-1 = -1".to_string()),
-                pattern: Some("^[+-][0-9]{1,2}$".to_string()),
+                pattern: None,
+                //Some("^[+-][0-9]{1,2}$".to_string()),
 
             },
             GeminiBotToolInput {
@@ -86,7 +89,7 @@ pub fn get_command() -> GeminiBotTools {
                 description: "반복 주기(cron 표현식)".to_string(),
                 input_type: GeminiBotToolInputType::STRING,
                 required: false,
-                format: Some("cron 표현식".to_string()),
+                format: None,
                 default: None,
                 enum_values: None,
                 example: Some("* * * * * *".to_string()),
@@ -97,11 +100,12 @@ pub fn get_command() -> GeminiBotTools {
                 description: "종료되는 일자. (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
                 input_type: GeminiBotToolInputType::STRING,
                 required: false,
-                format: Some("YYYY-MM-DD HH:MM:SS".to_string()),
+                format: Some("date-time".to_string()),
                 default: None,
                 enum_values: None,
                 example: Some("2024-08-21 12:00:00".to_string()),
-                pattern: Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
+                pattern: None
+                //Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
 
             },
         ],

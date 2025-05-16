@@ -264,3 +264,7 @@ impl GeminiClientTrait for GeminiClient {
     }
 
 }
+
+// pub async fn send_query_to_cached_gemini() -> Result<GeminiResponse, String> {
+
+// } 

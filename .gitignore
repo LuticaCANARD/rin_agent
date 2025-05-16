@@ -1,6 +1,5 @@
 /target
 .env
-/migration
 
 # 서버 관리용
 nohup.out

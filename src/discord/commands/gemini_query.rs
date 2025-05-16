@@ -530,11 +530,41 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     };
     let _push_query: () = before_messages.push(user_msg_current);
     LOGGER.log(LogLevel::Debug, &format!("Sending Query: {:?}", before_messages));
+    let after_parent = tb_discord_message_to_at_context::Entity::find()
+    .join_as(
+        JoinType::LeftJoin,
+        Into::<sea_orm::RelationDef>::into(
+            tb_discord_message_to_at_context::Entity::belongs_to(tb_context_to_msg_id::Entity)
+                .from(tb_discord_message_to_at_context::Column::AiMsgId)
+                .to(tb_context_to_msg_id::Column::AiMsg)
+        ),
+        Alias::new("rel_discord_ctx"),
+    )
+    .filter(
+        Condition::all()
+            .add(
+                // 다음노드가 생성될 필요가 있는지만 묻는 것이므로, in 설정은 기각한다.
+                Expr::col(tb_context_to_msg_id::Column::AiContext).eq(ai_context_info.id as i64)
+            )
+            .add(
+                Expr::col(tb_discord_message_to_at_context::Column::AiMsgId).gt(parent_context.last().unwrap().0.id as i64)
+            )
+    )
+    .all(&db)
+    .await
+    .unwrap();
+    let mut continue_context = ai_context_info.id as i64;
+    LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
+    // 이후의 컨텍스트가 존재하면 true
+    let there_is_next_context = after_parent.len() > 0;
     let ai_response = gemini_client::GeminiClient::new()
     .send_query_to_gemini(
         before_messages,
         &get_begin_query(user_locale.unwrap_or("ko".to_string()),calling_msg.author.id.get().to_string()),
-        context_using_pro).await;
+        context_using_pro)
+    .await;
+
+    
     if ai_response.is_err() {
         typing.stop();
         LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", ai_response));
@@ -600,33 +630,6 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .await
         .unwrap();
     LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
-
-    let after_parent = tb_discord_message_to_at_context::Entity::find()
-    .join_as(
-        JoinType::LeftJoin,
-        Into::<sea_orm::RelationDef>::into(
-            tb_discord_message_to_at_context::Entity::belongs_to(tb_context_to_msg_id::Entity)
-                .from(tb_discord_message_to_at_context::Column::AiMsgId)
-                .to(tb_context_to_msg_id::Column::AiMsg)
-        ),
-        Alias::new("rel_discord_ctx"),
-    )
-    .filter(
-        Condition::all()
-            .add(
-                // 다음노드가 생성될 필요가 있는지만 묻는 것이므로, in 설정은 기각한다.
-                Expr::col(tb_context_to_msg_id::Column::AiContext).eq(ai_context_info.id as i64)
-            )
-            .add(
-                Expr::col(tb_discord_message_to_at_context::Column::AiMsgId).gt(parent_context.last().unwrap().0.id as i64)
-            )
-    )
-    .all(&db)
-    .await
-    .unwrap();
-    let mut continue_context = ai_context_info.id as i64;
-    LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
-    let there_is_next_context = after_parent.len() > 0;
     LOGGER.log(LogLevel::Debug, &format!("there_is_next_context: {:?}", there_is_next_context));
     if there_is_next_context {
         // 컨텍스트 분기를 실행해야 함.
