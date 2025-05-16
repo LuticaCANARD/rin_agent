@@ -17,8 +17,18 @@ impl MigrationTrait for Migration {
                 .col(ColumnDef::new(TbAlarmModel::Message).text().not_null())
                 .col(string_null(TbAlarmModel::RepeatCircle).string_len(100)) 
                 .col(date_time_null(TbAlarmModel::RepeatEndAt))
-                .col(date_time(TbAlarmModel::CreatedAt))
-                .col(date_time(TbAlarmModel::UpdatedAt))
+                .col(ColumnDef::new(TbAlarmModel::CreatedAt)
+                    .date_time()
+                    .not_null()
+                    .default(Expr::current_timestamp())
+                    .take()
+                )
+                .col(date_time(TbAlarmModel::UpdatedAt)
+                    .date_time()
+                    .not_null()
+                    .default(Expr::current_timestamp())
+                    .take()
+                )
                 .to_owned(),
         ).await
     }

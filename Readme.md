@@ -27,6 +27,7 @@ src/
 ## DB migration
 
 > cd .\entity\src\ && sea-orm-cli generate entity --lib && cd ../..
+> sea-orm-cli migrate up
 
 ## 서버 재기동
 
@@ -83,4 +84,3 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:g
 ```
 
 안녕?
-
