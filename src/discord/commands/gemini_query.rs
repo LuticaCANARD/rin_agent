@@ -5,7 +5,7 @@ use base64::Engine;
 use entity::{tb_context_to_msg_id, tb_image_attach_file};
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Alias;
-use sea_orm::{Condition, ConnectionTrait, EntityTrait, Insert, InsertResult, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
+use sea_orm::{Condition, ConnectionTrait, DbErr, EntityTrait, Insert, InsertResult, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
 use serenity::builder::*;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
@@ -25,7 +25,7 @@ use entity::tb_discord_ai_context::{self, ActiveModel as AiContextDiscordModel, 
 use entity::tb_discord_message_to_at_context::{self, ActiveModel as AiContextDiscordMessageModel, Column as TbDiscordMessageToAtContext, Entity as AiContextDiscordMessageEntity};
 type PastQuery = (entity::tb_ai_context::Model, Option<entity::tb_image_attach_file::Model>, Option<entity::tb_context_to_msg_id::Model>);
 type QueryDBVector = Vec<PastQuery>;
-
+const DISCORD_MAX_MSG_LENGTH: usize = 1950;
 fn generate_message_block(box_msg: String, title:String , description:String,footer:String,need_emded:bool) -> CreateMessage{
     let msg = CreateMessage::new()                
     .content( box_msg);
@@ -66,7 +66,7 @@ fn context_process(origin:&PastQuery) -> GeminiChatChunk {
     }
 }
 async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool,use_pro:bool)->Vec<Message> {
-    let origin_msg = message_context.discord_msg.clone();
+    let origin_msg = message_context.discord_msg;
     let mut send_msgs:Vec<Message> = vec![];
     for user_command_res in message_context.command_result.iter() {
         if user_command_res.is_ok() {
@@ -93,10 +93,10 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
         }
     }
 
-    let chuncks: Vec<String> = split_text_by_length_and_markdown(&origin_msg, 1950);
+    let chuncks: Vec<String> = split_text_by_length_and_markdown(&origin_msg, DISCORD_MAX_MSG_LENGTH);
     for chunk in 0..chuncks.len() {
         let msg_last = if need_mention_first == true && chunk == 0 {
-            user_mention(&origin_user) + &chuncks.get(chunk).unwrap().clone()
+            user_mention(&origin_user) + &chuncks.get(chunk).unwrap()
         } else {
             chuncks.get(chunk).unwrap().clone()
         };
@@ -113,7 +113,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
             };
             
             let strs = if need_mention_first == true && chunk == 0 {  
-                user_mention(&origin_user) + &chuncks.get(chunk).unwrap().clone()
+                user_mention(&origin_user) + &chuncks.get(chunk).unwrap()
             } else {
                 chuncks.get(chunk).unwrap().clone()
             };
@@ -159,11 +159,15 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 
             // Do something with the string value
             LOGGER.log(LogLevel::Debug, &format!("질문: {}", s));
-            let discord_response_message = CreateInteractionResponseMessage::new().content(&format!("질문 : {}", s));
+            let discord_response_message = 
+                CreateInteractionResponseMessage::new()
+                    .content(&format!("{}> {}",user_mention(&_options.user), s));
 
             // Send a response to the interaction
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
             let str_query = s.to_string();
+            let locale =_options.user.locale.clone().unwrap_or("ko".to_string());
+            let user_id = _options.user.id.get();
             let response = 
             gemini_client::GeminiClient::new()
                 .send_query_to_gemini(vec![
@@ -172,11 +176,10 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         is_bot: false,
                         image: None,
                         timestamp: chrono::Utc::now().to_string(),
-                        user_id: Some(_options.user.id.get().to_string()),
+                        user_id: Some(user_id.to_string()),
                     }
-                ],
-                &get_begin_query(_options.user.locale.clone().unwrap_or("ko".to_string()),_options.user.id.get().to_string())
-                ,use_pro).await;
+                ],&get_begin_query(locale,user_id.to_string()),use_pro)
+                .await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
                 return Err(SerenityError::Other("Gemini API Error"));
@@ -197,19 +200,20 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 LOGGER.log(LogLevel::Error, "DB Connection Error");
                 return Err(serenity::Error::Other(DISCORD_DB_ERROR));
             }
+            let guild_id = _options.guild_id.unwrap().get();
             let db = db.unwrap().clone();
             let insert_user_and_bot_talk: Vec<tb_ai_context::Model> = AiContextEntity::insert_many(vec![
                 AiContextModel {
-                    user_id: sea_orm::Set(_options.user.id.get() as i64),
+                    user_id: sea_orm::Set(user_id as i64),
                     context: sea_orm::Set(str_query),
                     guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                     channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                     by_bot: sea_orm::Set(false),
                     ..Default::default()
                 },AiContextModel {
-                    user_id: sea_orm::Set(_options.user.id.get() as i64),
+                    user_id: sea_orm::Set(user_id as i64),
                     context: sea_orm::Set(response.discord_msg),
-                    guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
+                    guild_id: sea_orm::Set(guild_id as i64),
                     channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                     by_bot: sea_orm::Set(true),
                     ..Default::default()
@@ -220,8 +224,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", insert_user_and_bot_talk));
 
             let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
-                guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
-                root_msg: sea_orm::Set( insert_user_and_bot_talk.get(0).unwrap().id),
+                guild_id: sea_orm::Set(guild_id as i64),
+                root_msg: sea_orm::Set(insert_user_and_bot_talk.get(0).unwrap().id),
                 parent_context: sea_orm::Set([].to_vec()),
                 using_pro_model: sea_orm::Set(use_pro),
                 ..Default::default()
@@ -271,7 +275,12 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
         _ => {
             // Handle other types if necessary
             LOGGER.log(LogLevel::Error, "질문이 잘못되었습니다.");
-            _options.create_response(_ctx,CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("질문이 잘못되었습니다."))).await?;
+            _options.create_response(_ctx,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                    .content("질문이 잘못되었습니다.")
+                )
+            ).await?;
             return Ok("질문이 잘못되었습니다.".to_string());
         }
     }
@@ -369,7 +378,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         .map(|x| (x.id as i64, x))
         .collect::<hash_map::HashMap<i64, tb_discord_ai_context::Model>>();
 
-    let ai_context_info = map_context_info.get(&ai_context_id);
+    let ai_context_info = map_context_info.get(&ai_context_id).cloned();
     
     if ai_context_info.is_none() {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
@@ -434,6 +443,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     )).collect::<hash_set::HashSet<i64>>();
     let mut last_context_id = ai_context_info.id as i64;
     let mut check_node = ai_context_info.root_msg;
+    let mut curr_check_context = ai_context_info.clone();
+
     let mut last_node: i64 = parent_context.last().unwrap().0.id as i64;
     let mut before_messages:Vec<GeminiChatChunk> = before_messages
         .iter()
@@ -446,15 +457,23 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             && last_context_id == current_context_id {
                 LOGGER.log(LogLevel::Debug, &format!("FILTERED! curr: {:?}", curr));
                 acc.push(curr);
-                if check_node == curr.0.id as i64 {
-                    if ai_context_info.parent_context.last().is_some() {
-                        last_context_id = ai_context_info.parent_context.last().unwrap().clone();
-                        let info = map_context_info.get(&last_context_id);
+                if check_node == curr.0.id as i64 { 
+                    // 현재 노드가 컨텍스트의 마지막 노드인 경우이다.
+                    if curr_check_context.parent_context.last().is_some() { 
+                        // 부모 컨텍스트가 존재하는 경우이다.
+                        // context에 대한 모델이다.
+                        let info: Option<&tb_discord_ai_context::Model> = map_context_info.get(&current_context_id);
                         if info.is_some() {
                             let info = info.unwrap();
                             check_node = info.root_msg as i64;
                             last_node = check_node;
+                            // 현재 컨텍스트를 마지막 컨텍스트 ID로 설정
+                            last_context_id = info.id as i64;
+                            curr_check_context = info.clone();
                         }
+                    } else if curr_check_context.parent_context.len() == 0 {
+                        // 루트 노드인 경우이다. 
+                        // 아직은 별도의 행동정의를 하지 않아도 좋다.
                     }
                 }
             } 
@@ -475,7 +494,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             let ts = &db.transaction(
                 |conn| Box::pin(async move {
                     let image_model = entity::tb_image_attach_file::ActiveModel {
-                        file_src: sea_orm::Set(image_origin.url.clone()),
+                        file_src: sea_orm::Set(image_origin.url),
                         ..Default::default()
                     };
                     let image_model = entity::tb_image_attach_file::Entity::insert(image_model)
@@ -485,7 +504,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
                     let image = GeminiImageInputType{
                         base64_image: None,
                         file_url: Some(image_model.file_src),
-                        mime_type: mime_type.clone(),
+                        mime_type: mime_type
                     };
                     let image = upload_image_to_gemini(image, image_model.image_id.to_string()).await;
                     if image.is_err() {
@@ -521,6 +540,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         None
     };
     let image_record = image.clone();
+    let image_record_for_tx = image_record.clone();
 
     let user_msg_current = GeminiChatChunk{
         query: calling_msg.content.clone(),
@@ -582,7 +602,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         return;
     }
     let ai_response = ai_response.unwrap();
-
+    let guild_id = calling_msg.guild_id.unwrap().get();
     let send_msgs:Vec<Message> = send_split_msg(_ctx, 
         calling_msg.channel_id, 
         calling_msg.author.clone(),
@@ -603,13 +623,36 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             };
             let image_inserted = entity::tb_image_attach_file::Entity::insert(image_inserted)
             .exec_with_returning(&db)
-            .await
-            .unwrap();
-            image_id = Some(image_inserted.image_id);
+            .await;
+            if image_inserted.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("Image insert failed: {:?}", image_inserted));
+                calling_msg.channel_id.say(_ctx, "이미지 전송에 실패했습니다.").await.unwrap();
+                return;
+            }
+            image_id = Some(image_inserted.unwrap().image_id);
         }
     }
-    let _insert_context_desc = AiContextEntity::insert_many(
-    vec![AiContextModel { // 유저 질의
+    let calling_msg = calling_msg.clone();
+    let transaction_result: Result<(), TransactionError<sea_orm::DbErr>> = db
+    .transaction(
+        move |txn| Box::pin(async move {
+        let mut _final_image_id = None;
+        if let Some(image_data) = image_record_for_tx { // image_record was cloned and moved
+            if let Some(file_src) = image_data.file_url {
+                let image_to_insert = entity::tb_image_attach_file::ActiveModel {
+                    file_src: sea_orm::Set(file_src),
+                    mime_type: sea_orm::Set(Some(image_data.mime_type.to_string())),
+                    ..Default::default()
+                };
+                let inserted_image_record = entity::tb_image_attach_file::Entity::insert(image_to_insert)
+                    .exec_with_returning(txn)
+                    .await?;
+                _final_image_id = Some(inserted_image_record.image_id);
+            }
+        } // 유저 질의
+        let inserted_context_desc = AiContextEntity::insert_many(
+            vec![
+                AiContextModel {
                     user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
                     context: sea_orm::Set(calling_msg.content.clone()),
                     guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
@@ -627,63 +670,70 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
                     ..Default::default()
                 } ]
         )
-        .exec_with_returning_many(&db)
-        .await
-        .unwrap();
-    LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", _insert_context_desc));
-    LOGGER.log(LogLevel::Debug, &format!("there_is_next_context: {:?}", there_is_next_context));
-    if there_is_next_context {
-        // 컨텍스트 분기를 실행해야 함.
-        let mut parent_context_lst = ai_context_info.parent_context.clone();
-        parent_context_lst.push(ai_context_info.id as i64);
-        let parent_context_lst = parent_context_lst;
+        .exec_with_returning_many(txn)
+        .await?;
+        LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}\nthere_is_next_context: {:?}", inserted_context_desc,there_is_next_context));
+        let mut current_context_id_for_relation = continue_context; // Original continue_context before potential update
 
-        let insert_context = AiContextDiscordEntity::insert(AiContextDiscordModel {
-        guild_id: sea_orm::Set(calling_msg.guild_id.unwrap().get() as i64),
-        root_msg: sea_orm::Set(_insert_context_desc[0].id),
-        parent_context: sea_orm::Set(parent_context_lst),
-        using_pro_model: sea_orm::Set(context_using_pro),
-        ..Default::default()
-        }).exec_with_returning(&db)
-        .await
-        .unwrap();
+        if there_is_next_context {
+            // 컨텍스트 분기를 실행해야 함.
+            let mut parent_context_lst = ai_context_info.parent_context.clone();
+            parent_context_lst.push(ai_context_info.id as i64);
+            let parent_context_lst = parent_context_lst;
 
-        continue_context = insert_context.id as i64;
-    }
+            let new_discord_context = AiContextDiscordEntity::insert(
+                AiContextDiscordModel {
+                guild_id: sea_orm::Set(guild_id as i64),
+                root_msg: sea_orm::Set(inserted_context_desc[0].id),
+                parent_context: sea_orm::Set(parent_context_lst),
+                using_pro_model: sea_orm::Set(context_using_pro),
+                ..Default::default()})
+            .exec_with_returning(txn)
+            .await?;
+            current_context_id_for_relation = new_discord_context.id as i64;
+        }
 
-    let _insert_user_and_bot_talk = tb_context_to_msg_id::Entity::insert_many(
+    tb_context_to_msg_id::Entity::insert_many(
         vec![
             tb_context_to_msg_id::ActiveModel {
-                ai_msg: sea_orm::Set(_insert_context_desc[0].id as i64),
-                ai_context: sea_orm::Set(continue_context),
+                ai_msg: sea_orm::Set(inserted_context_desc[0].id as i64),
+                ai_context: sea_orm::Set(current_context_id_for_relation),
                 ..Default::default()
             },
             tb_context_to_msg_id::ActiveModel {
-                ai_msg: sea_orm::Set(_insert_context_desc[1].id as i64),
-                ai_context: sea_orm::Set(continue_context),
+                ai_msg: sea_orm::Set(inserted_context_desc[1].id as i64),
+                ai_context: sea_orm::Set(current_context_id_for_relation),
                 ..Default::default()
             }
-        ]).exec(&db)
-        .await
-        .unwrap();
-
+        ]).exec(txn)
+        .await?;
 
     let ai_context_discord_messages = send_msgs.iter().map(|msg| {
         AiContextDiscordMessageModel {
             discord_message: sea_orm::Set(msg.id.get() as i64),
-            ai_msg_id: sea_orm::Set(_insert_context_desc[1].id),
+            ai_msg_id: sea_orm::Set(inserted_context_desc[1].id),
             ..Default::default()
         }
     }).collect::<Vec<_>>();
     let insert_user_msg_to_context =  AiContextDiscordMessageModel {
         discord_message: sea_orm::Set(calling_msg.id.get() as i64),
-        ai_msg_id: sea_orm::Set(_insert_context_desc[0].id),
+        ai_msg_id: sea_orm::Set(inserted_context_desc[0].id),
         ..Default::default()
     };
-    let _context_inserted = AiContextDiscordMessageEntity::insert_many(ai_context_discord_messages)
-    .add(insert_user_msg_to_context)
-        .exec(&db)
-        .await
-        .unwrap();
+    AiContextDiscordMessageEntity::insert_many(ai_context_discord_messages)
+        .add(insert_user_msg_to_context)
+        .exec(txn)
+        .await?;
+        Ok(())
+    })).await;
+    if transaction_result.is_err() {
+        LOGGER.log(LogLevel::Error, &format!("DB Transaction Error: {:?}", transaction_result));
+        calling_msg.channel_id.say(_ctx, "DB Transaction Error").await.unwrap();
+        return;
+    }
+    let transaction_result = transaction_result.unwrap();
+    LOGGER.log(LogLevel::Debug, &format!("DB Transaction Result: {:?}", transaction_result));
+
+    
 
 }

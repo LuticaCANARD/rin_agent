@@ -76,7 +76,7 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "message".to_string(),
                 input_type: GeminiBotToolInputType::STRING,
-                description: "알람과 함꼐 주인님꼐 보낼 메시지 혹은, 주인님이 알림에 메모한 사항.".to_string(),
+                description: "알람과 함꼐 주인님께 보낼 메시지 혹은, 주인님이 알림에 메모한 사항.".to_string(),
                 required: false,
                 format: None,
                 default: None,

@@ -326,7 +326,6 @@ impl GeminiClientTrait for GeminiClient {
         if last_part.is_null() {
             return Err("No content found in response".to_string());
         }
-        LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response - last msg: {}", last_part.to_string()));
         let last_argus = last_part["args"].as_object();
         if last_argus.is_none() {
             return Err("Invalid function call format".to_string());
@@ -342,7 +341,11 @@ impl GeminiClientTrait for GeminiClient {
 
         let discord_msg = last_argus.get("msg")
             .ok_or_else(|| "The 'msg' field was not found in the function call arguments.".to_string())?
+            .as_str()
+            .ok_or_else(|| "The 'msg' field is not a string.".to_string())?
             .to_string();
+
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response - last msg: {}", discord_msg));
 
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         

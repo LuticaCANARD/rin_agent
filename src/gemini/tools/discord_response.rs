@@ -37,7 +37,7 @@ pub fn get_command() -> GeminiBotTools {
                 format: None,
                 default: None,
                 enum_values: None,
-                example: None,
+                example: Some("주인님, 안녕하세요!".to_string()),
                 pattern: None,
             },
         ],
