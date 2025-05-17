@@ -108,14 +108,6 @@ impl GeminiClientTrait for GeminiClient {
             LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
             return Err(format!("Gemini API > Error: {}", error_message));
         }
-        // let candidates = response_json["candidates"].as_array();
-        // if candidates.is_none() {
-        //     return Err("Invalid response format".to_string());
-        // }
-        // let candidates = candidates.unwrap();
-        // if candidates.is_empty() {
-        //     return Err("No candidates found in response".to_string());
-        // }
         let first_candidate = response_json
             .get("candidates")
             .and_then(Value::as_array)
@@ -128,26 +120,26 @@ impl GeminiClientTrait for GeminiClient {
             .and_then(Value::as_object)
             .ok_or_else(|| generate_gemini_error_message("Candidate missing 'content' object"))?;
 
-        let gemini_response_parts_ref = content // This is &Vec<Value>
+        let gemini_response_part = content // This is &Vec<Value>
             .get("parts")
             .and_then(Value::as_array)
             .ok_or_else(|| generate_gemini_error_message("Content missing 'parts' array or not an array"))?;
+        let mut latest_response: Value = gemini_response_part.last()
+            .ok_or_else(|| generate_gemini_error_message("No content found in response"))?
+            .clone();
 
-        let gemini_response_parts: Vec<Value> = gemini_response_parts_ref.clone();
+        let gemini_response_parts: Vec<Value> = objected_query["contents"].as_array().unwrap().clone();
 
         let mut parts: Vec<Value> = gemini_response_parts.clone();
         let mut command_result: Vec<Result<GeminiActionResult,String>> = vec![];
         let mut command_try_count = 0;
         let mut hash_command_params = hash::DefaultHasher::new();
         let mut recent_hash= 0;
-        let gemini_response_part = gemini_response_parts.last();
-        if gemini_response_part.is_none() {
-            return Err("No content found in response".to_string());
-        }
-        let mut latest_response = gemini_response_part.unwrap();
+        
+        let mut res_objected_query = objected_query.clone();
+
         let mut latest_fn_call_name = latest_response["functionCall"]["name"].as_str();
         while latest_fn_call_name != Some("response_msg") {
-            let mut res_objected_query = objected_query.clone();
             let fn_obj = &latest_response;
             let argus = fn_obj["functionCall"]["args"].as_object();
             if argus.is_none() {
@@ -184,7 +176,8 @@ impl GeminiClientTrait for GeminiClient {
                 let fn_res =  (fn_action)(argus).await;
                 command_result.push(fn_res.clone());
                 parts.push(
-                    json!({"role": "model",
+                    json!({
+                        "role": "model",
                         "parts": [{
                             "functionCall":{
                                 "name": fn_name,
@@ -197,7 +190,8 @@ impl GeminiClientTrait for GeminiClient {
                     Err(e) => {
                         LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", e));
                         parts.push(
-                            json!({"role": "user",
+                            json!({
+                                "role": "user",
                                 "parts": [{
                                     "functionResponse":{
                                         "name": fn_name,
@@ -248,6 +242,7 @@ impl GeminiClientTrait for GeminiClient {
             } else {
                 command_try_count += 1;
             }
+            LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Req: {}", res_objected_query));
             let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -257,8 +252,10 @@ impl GeminiClientTrait for GeminiClient {
             .map_err(|e| e.to_string())?;
 
             if response.status() != 200 {
-                LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", response.status()));
-                return Err(format!("Gemini API > Error: {}", response.status()));
+                let stat = response.status();
+                LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", stat));
+                LOGGER.log(LogLevel::Error, &format!("Gemini API > API Error: {}", response.text().await.unwrap()));
+                return Err(format!("Gemini API > Error: {}", stat));
             }
 
             let response_result = response.text().await;
@@ -285,31 +282,21 @@ impl GeminiClientTrait for GeminiClient {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
                 return Err(format!("Gemini API > Error: {}", error_message));
             }
-
-            let candidates = fn_obj["candidates"].as_array();
-            if candidates.is_none() {
-                return Err("Invalid response format".to_string());
-            }
-            let candidates = candidates.unwrap();
-            if candidates.is_empty() {
-                return Err("No candidates found in response".to_string());
-            }
+            let candidates_= response_result["candidates"].as_array().ok_or_else(|| {
+                generate_gemini_error_message("Response missing 'candidates' array")
+            })?;
             
-            let first_candidate = &candidates[0];
+            let first_candidate = &candidates_[0];
 
             let content = first_candidate["content"].as_object();
             if content.is_none() {
                 return Err("No content found in response".to_string());
             }
             let content = content.unwrap();
-            let gemini_response_part = content["parts"].as_array();
-            if gemini_response_part.is_none() {
-                return Err("No content found in response".to_string());
-            }
-            let gemini_response_part = gemini_response_part.unwrap();
-            if gemini_response_part.is_empty() {
-                return Err("No content found in response".to_string());
-            } else if gemini_response_part.len() == 0 {
+            let gemini_response_part = content["parts"].as_array().ok_or_else(|| {
+                generate_gemini_error_message("Content missing 'parts' array or not an array")
+            })?; 
+            if gemini_response_part.len() == 0 {
                 return Err("No content found in response in array!".to_string());
             }
 
@@ -318,7 +305,7 @@ impl GeminiClientTrait for GeminiClient {
                 return Err("No content found in response".to_string());
             }
             let content = content.unwrap();
-            latest_response = content;
+            latest_response = content.clone();
             latest_fn_call_name = latest_response["functionCall"]["name"].as_str();
         }
         
