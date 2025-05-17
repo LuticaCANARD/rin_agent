@@ -108,49 +108,45 @@ impl GeminiClientTrait for GeminiClient {
             LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
             return Err(format!("Gemini API > Error: {}", error_message));
         }
-        let candidates = response_json["candidates"].as_array();
-        if candidates.is_none() {
-            return Err("Invalid response format".to_string());
-        }
-        let candidates = candidates.unwrap();
-        if candidates.is_empty() {
-            return Err("No candidates found in response".to_string());
-        }
-        let first_candidate = &candidates[0];
-        let content = first_candidate["content"].as_object();
-        if content.is_none() {
-            return Err(generate_gemini_error_message(
-                "There is no content in response"
-                )
-            )
-        }
-        let content = content.unwrap();
-        if content.contains_key("parts") == false {
-            return Err(generate_gemini_error_message(
-                "No parts found in response"
-                )
-            );
-        }
-        let gemini_response_parts = content["parts"].as_array();
-        if gemini_response_parts.is_none() {
-            return Err(generate_gemini_error_message(
-                "No content [parts] found in response"
-                )
-            );
-        }
-        let gemini_response_parts = gemini_response_parts.unwrap().clone();
+        // let candidates = response_json["candidates"].as_array();
+        // if candidates.is_none() {
+        //     return Err("Invalid response format".to_string());
+        // }
+        // let candidates = candidates.unwrap();
+        // if candidates.is_empty() {
+        //     return Err("No candidates found in response".to_string());
+        // }
+        let first_candidate = response_json
+            .get("candidates")
+            .and_then(Value::as_array)
+            .ok_or_else(|| generate_gemini_error_message("Response missing 'candidates' array"))?
+            .first()
+            .ok_or_else(|| generate_gemini_error_message("No candidates found in response"))?;
+
+        let content = first_candidate
+            .get("content")
+            .and_then(Value::as_object)
+            .ok_or_else(|| generate_gemini_error_message("Candidate missing 'content' object"))?;
+
+        let gemini_response_parts_ref = content // This is &Vec<Value>
+            .get("parts")
+            .and_then(Value::as_array)
+            .ok_or_else(|| generate_gemini_error_message("Content missing 'parts' array or not an array"))?;
+
+        let gemini_response_parts: Vec<Value> = gemini_response_parts_ref.clone();
 
         let mut parts: Vec<Value> = gemini_response_parts.clone();
         let mut command_result: Vec<Result<GeminiActionResult,String>> = vec![];
         let mut command_try_count = 0;
         let mut hash_command_params = hash::DefaultHasher::new();
         let mut recent_hash= 0;
-        let gemini_response_part = gemini_response_parts.last().cloned();
+        let gemini_response_part = gemini_response_parts.last();
         if gemini_response_part.is_none() {
             return Err("No content found in response".to_string());
         }
         let mut latest_response = gemini_response_part.unwrap();
-        while latest_response["functionCall"]["name"].as_str() != Some("response_msg") {
+        let mut latest_fn_call_name = latest_response["functionCall"]["name"].as_str();
+        while latest_fn_call_name != Some("response_msg") {
             let mut res_objected_query = objected_query.clone();
             let fn_obj = &latest_response;
             let argus = fn_obj["functionCall"]["args"].as_object();
@@ -245,7 +241,9 @@ impl GeminiClientTrait for GeminiClient {
                 res_objected_query["contents"] = json!(a);
             }
             if command_try_count > 10 || hash_target == recent_hash {
-                LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", "Infinite loop detected"));
+                LOGGER.log(LogLevel::Error, &generate_gemini_error_message(
+                    "FN > Error: Too many function calls or infinite loop detected"
+                ));
                 res_objected_query["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"] = json!(["response_msg"]);
             } else {
                 command_try_count += 1;
@@ -288,7 +286,7 @@ impl GeminiClientTrait for GeminiClient {
                 return Err(format!("Gemini API > Error: {}", error_message));
             }
 
-            let candidates = response_result["candidates"].as_array();
+            let candidates = fn_obj["candidates"].as_array();
             if candidates.is_none() {
                 return Err("Invalid response format".to_string());
             }
@@ -320,8 +318,8 @@ impl GeminiClientTrait for GeminiClient {
                 return Err("No content found in response".to_string());
             }
             let content = content.unwrap();
-            latest_response = content.clone();
-            
+            latest_response = content;
+            latest_fn_call_name = latest_response["functionCall"]["name"].as_str();
         }
         
         let last_part = &latest_response["functionCall"];
@@ -335,28 +333,16 @@ impl GeminiClientTrait for GeminiClient {
         }
         let last_argus = last_argus.unwrap();
 
-        let sub_items = if last_argus.get_key_value("subItems") != None {
-            Some(last_argus["subItems"]
-            .as_array()
-            .expect("there is no subitem")
-            .iter()
+        let sub_items = last_argus.get("subItems")
+            .and_then(|value| value.as_array())
+            .map(|arr| arr.iter()                
             .filter_map(|item| item.as_str())
             .map(|s| s.to_string())
-            .collect::<Vec<String>>())
-        } else {
-            None
-        };
-        
-        
-        let discord_msg = if last_argus.get_key_value("msg") != None {
-            Ok(last_argus["msg"]
-            .to_string())
-        }  else {
-            Err("No content found in response".to_string())
-        };
-        if let Err(e) = discord_msg { return Err(e); }
+            .collect::<Vec<String>>());
 
-        let discord_msg = discord_msg.unwrap();
+        let discord_msg = last_argus.get("msg")
+            .ok_or_else(|| "The 'msg' field was not found in the function call arguments.".to_string())?
+            .to_string();
 
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         
