@@ -103,32 +103,33 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
         let mut response_msg: CreateMessage = CreateMessage::new()
         .content(msg_last);
         if chunk == chuncks.len() - 1 {
-            let mut sub_items = String::new();
-            if message_context.sub_items.len() >0 {
-                
-                for sub_item in message_context.sub_items.iter() {
-                    sub_items.push_str(&format!("{}\n", sub_item));
-                }
-            }
+            let sub_items = if message_context.sub_items.is_some() {
+                message_context.sub_items
+                    .clone()
+                    .unwrap()
+                    .join("\n")
+            } else {
+                "".to_string()
+            };
+            
             let strs = if need_mention_first == true && chunk == 0 {  
                 user_mention(&origin_user) + &chuncks.get(chunk).unwrap().clone()
             } else {
                 chuncks.get(chunk).unwrap().clone()
             };
+            let used_model = if use_pro {GEMINI_MODEL_PRO.to_string()} else {GEMINI_MODEL_FLASH.to_string()};
             response_msg = generate_message_block(strs,
-            "Gemini API".to_string(), sub_items,
-            if use_pro {GEMINI_MODEL_PRO.to_string()} else {GEMINI_MODEL_FLASH.to_string()},chunk == chuncks.len() - 1);
+                "Gemini API".to_string(), sub_items,
+                used_model,chunk == chuncks.len() - 1
+            );
         }
         if chunk == 0 {
             if let Some(ref ref_msg) = ref_msg {
                 response_msg = response_msg.reference_message(ref_msg);
             }
         }
-    
         send_msgs.push(channel_context.send_message(_ctx,response_msg).await.unwrap());
-
     }
-    
     send_msgs
 }
 

@@ -11,7 +11,7 @@ pub struct GeminiActionResult {
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
     pub discord_msg: String,
-    pub sub_items: Vec<String>,
+    pub sub_items: Option<Vec<String>>,
     pub finish_reason: String,
     pub command_result: Vec<Result<GeminiActionResult,String>>,
     pub avg_logprobs: f64,

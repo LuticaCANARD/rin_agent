@@ -19,6 +19,10 @@ pub struct GeminiClient {
     net_client: Client
 }
 
+fn generate_gemini_error_message(error: &str) -> String {
+    format!("Gemini API > Error: {}", error)
+}
+
 pub trait GeminiClientTrait {
     fn new() -> Self;
     async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool) -> Result<GeminiResponse, String>;
@@ -86,7 +90,7 @@ impl GeminiClientTrait for GeminiClient {
         );
 
         let objected_query = self.generate_to_gemini_query(query,begin_query);
-                        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
 
         let response = self.net_client
             .post(&url)
@@ -104,25 +108,47 @@ impl GeminiClientTrait for GeminiClient {
             LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
             return Err(format!("Gemini API > Error: {}", error_message));
         }
-        let candidates = response_json["candidates"].as_array().ok_or("DInvalid response format")?;
+        let candidates = response_json["candidates"].as_array();
+        if candidates.is_none() {
+            return Err("Invalid response format".to_string());
+        }
+        let candidates = candidates.unwrap();
         if candidates.is_empty() {
             return Err("No candidates found in response".to_string());
         }
         let first_candidate = &candidates[0];
-        let content = first_candidate["content"].as_object().ok_or("CInvalid response format")?;
-        let mut gemini_responese_part = content["parts"].as_array().ok_or("BInvalid response format")?.clone();
+        let content = first_candidate["content"].as_object();
+        if content.is_none() {
+            return Err("No content found in response".to_string());
+        }
+        let content = content.unwrap();
+        let gemini_response_part = content["parts"].as_array();
+        if gemini_response_part.is_none() {
+            return Err("No content found in response".to_string());
+        }
+        let gemini_response_part = gemini_response_part.unwrap();
+
         let mut parts: Vec<Value> = vec![];
         let mut command_result: Vec<Result<GeminiActionResult,String>> = vec![];
         let mut command_try_count = 0;
         let mut hash_command_params = hash::DefaultHasher::new();
         let mut recent_hash= 0;
-        
-        while gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str() != Some("response_msg") {
+        let gemini_last_response = &gemini_response_part.last();
+        if gemini_last_response.is_none() {
+            return Err("No content found in response".to_string());
+        }
+        let gemini_last_response = gemini_last_response.unwrap();
+        let mut latest_response = gemini_last_response.clone(); 
+        while latest_response["functionCall"]["name"].as_str() != Some("response_msg") {
             let mut res_objected_query = objected_query.clone();
-            let fn_obj = gemini_responese_part.last();
-            let argus = gemini_responese_part.last().unwrap()["functionCall"]["args"].as_object().ok_or("Invalid function call format")?;
+            let fn_obj = gemini_last_response;
+            let argus = gemini_last_response["functionCall"]["args"].as_object();
+            if argus.is_none() {
+                return Err("Invalid function call format".to_string());
+            }
+            let argus = argus.unwrap();
             let origin_argu = argus.clone();
-            hash_command_params.write(fn_obj.unwrap().to_string().as_bytes());
+            hash_command_params.write(fn_obj.to_string().as_bytes());
             let hash_target = hash_command_params.finish();
             if hash_target != recent_hash {
                 hash_command_params = hash::DefaultHasher::new();
@@ -137,9 +163,18 @@ impl GeminiClientTrait for GeminiClient {
                     (k.clone(), arg)
                 })
                 .collect::<hash_map::HashMap<String, GeminiBotToolInputValue>>();
-                let fn_name = gemini_responese_part.last().unwrap()["functionCall"]["name"].as_str().ok_or("Invalid function name")?;
-                let fn_name = fn_name.to_string();
-                let fn_res =  (GEMINI_BOT_TOOLS.get(fn_obj.unwrap()["functionCall"]["name"].as_str().unwrap()).ok_or("Invalid function name")?.action)(argus).await;
+                let fn_name = gemini_last_response["functionCall"]["name"].as_str();
+                if fn_name.is_none() {
+                    return Err("Invalid function name".to_string());
+                }
+                let fn_name = fn_name.unwrap();
+                let fn_action = GEMINI_BOT_TOOLS.get(fn_name);
+                if fn_action.is_none() {
+                    return Err(format!("Function {} not found", fn_name));
+                }
+                let fn_action = (fn_action.unwrap().action);
+
+                let fn_res =  (fn_action)(argus).await;
                 command_result.push(fn_res.clone());
                 parts.push(
                     json!({"role": "model",
@@ -186,7 +221,15 @@ impl GeminiClientTrait for GeminiClient {
                     }
                 }
                 let obj_part = json!(parts);
-                let mut a = res_objected_query["contents"].as_array().unwrap().clone();
+                if obj_part.is_null() {
+                    return Err("Invalid response format".to_string());
+                }
+                let arrayed = res_objected_query["contents"].as_array();
+                if arrayed.is_none() {
+                    return Err("Invalid response format".to_string());
+                }
+                let arrayed = arrayed.unwrap();
+                let mut a = arrayed.clone();
                 a.push(obj_part);
                 res_objected_query["contents"] = json!(a);
             }
@@ -197,7 +240,6 @@ impl GeminiClientTrait for GeminiClient {
                 res_objected_query["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"] = json!(["response_msg"]);
             } else {
                 command_try_count += 1;
-
             }
             let response = self.net_client
             .post(&url)
@@ -206,50 +248,104 @@ impl GeminiClientTrait for GeminiClient {
             .send()
             .await
             .map_err(|e| e.to_string())?;
+
+            if response.status() != 200 {
+                LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", response.status()));
+                return Err(format!("Gemini API > Error: {}", response.status()));
+            }
+
             let response_result = response.text().await.unwrap();
             LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response: {}", response_result));
             let response_result: Result<Value, String> = serde_json::from_str(&response_result).map_err(|e| e.to_string());
+
             if response_result.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", response_result.as_ref().err().unwrap()));
                 return Err(format!("Gemini API > Error: {}", response_result.as_ref().err().unwrap()));
             }
+
             let response_result = response_result.unwrap();
             if response_result["error"].is_object() {
                 let error_message = response_result["error"]["message"].as_str().unwrap_or("Unknown error");
                 LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", error_message));
                 return Err(format!("Gemini API > Error: {}", error_message));
             }
-            let candidates = response_result["candidates"].as_array().ok_or("Invalid response format")?;
+
+            let candidates = response_result["candidates"].as_array();
+            if candidates.is_none() {
+                return Err("Invalid response format".to_string());
+            }
+            let candidates = candidates.unwrap();
             if candidates.is_empty() {
                 return Err("No candidates found in response".to_string());
             }
+            
             let first_candidate = &candidates[0];
-            let content = first_candidate["content"]["parts"].as_array().ok_or("Invalid response format")?.last().unwrap();
-            gemini_responese_part.push(content.clone());
 
+            let content = first_candidate["content"].as_object();
+            if content.is_none() {
+                return Err("No content found in response".to_string());
+            }
+            let content = content.unwrap();
+            let mut gemini_response_part = content["parts"].as_array();
+            if gemini_response_part.is_none() {
+                return Err("No content found in response".to_string());
+            }
+            let gemini_response_part = gemini_response_part.unwrap();
+            if gemini_response_part.is_empty() {
+                return Err("No content found in response".to_string());
+            } else if gemini_response_part.len() == 0 {
+                return Err("No content found in response in array!".to_string());
+            }
+
+            let content = gemini_response_part.last();
+            if content.is_none() {
+                return Err("No content found in response".to_string());
+            }
+            let content = content.unwrap();
+            latest_response = content.clone();
         }
         
-
-        let last_part = &gemini_responese_part.last().unwrap()["functionCall"];
+        let gemini_response_part = latest_response;
+        let last_part = &gemini_response_part["functionCall"];
+        if last_part.is_null() {
+            return Err("No content found in response".to_string());
+        }
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response - last msg: {}", last_part.to_string()));
-        let last_argus = last_part["args"].as_object().ok_or("Invalid function call format")?;
+        let last_argus = last_part["args"].as_object();
+        if last_argus.is_none() {
+            return Err("Invalid function call format".to_string());
+        }
+        let last_argus = last_argus.unwrap();
 
-        let text = last_argus["msg"].as_str().ok_or("AInvalid response format")?;
+        let text = last_argus["msg"].as_str();
+        if text.is_none() {
+            return Err("No text found in response".to_string());
+        }
+        let text = text.unwrap().to_string();
 
         let mut sub_items:&Vec<Value> = &vec![];
         if text.len() < 1 {
             return Err("No text found in response".to_string());
         }
-        if last_argus.get_key_value("subItems") != None  {
-            sub_items = content["subItems"].as_array().ok_or("2Invalid response format")?;
-        }
-        let sub_items: Vec<String> = sub_items.iter()
-            .filter_map(|item| item.as_str())
-            .map(|s| s.to_string())
-            .collect();
+        
+        let sub_items = if last_argus
+        .get_key_value("subItems") != None {
+                    Some(last_argus["subItems"]
+                    .as_array()
+                    .expect("there is no subitem")
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>())
+                } else {
+                    None
+                };
+        
+        
         let discord_msg = text.to_string();
 
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
+        
         let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
 
         let gemini_response = GeminiResponse {
