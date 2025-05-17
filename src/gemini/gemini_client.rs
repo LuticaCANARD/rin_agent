@@ -119,25 +119,37 @@ impl GeminiClientTrait for GeminiClient {
         let first_candidate = &candidates[0];
         let content = first_candidate["content"].as_object();
         if content.is_none() {
-            return Err("No content found in response".to_string());
+            return Err(generate_gemini_error_message(
+                "There is no content in response"
+                )
+            )
         }
         let content = content.unwrap();
-        let gemini_response_part = content["parts"].as_array();
-        if gemini_response_part.is_none() {
-            return Err("No content found in response".to_string());
+        if content.contains_key("parts") == false {
+            return Err(generate_gemini_error_message(
+                "No parts found in response"
+                )
+            );
         }
-        let gemini_response_parts = gemini_response_part.unwrap().clone();
+        let gemini_response_parts = content["parts"].as_array();
+        if gemini_response_parts.is_none() {
+            return Err(generate_gemini_error_message(
+                "No content [parts] found in response"
+                )
+            );
+        }
+        let gemini_response_parts = gemini_response_parts.unwrap().clone();
 
-        let mut parts: Vec<Value> = vec![];
+        let mut parts: Vec<Value> = gemini_response_parts.clone();
         let mut command_result: Vec<Result<GeminiActionResult,String>> = vec![];
         let mut command_try_count = 0;
         let mut hash_command_params = hash::DefaultHasher::new();
         let mut recent_hash= 0;
-        let gemini_last_response = gemini_response_parts.last().cloned();
-        if gemini_last_response.is_none() {
+        let gemini_response_part = gemini_response_parts.last().cloned();
+        if gemini_response_part.is_none() {
             return Err("No content found in response".to_string());
         }
-        let mut latest_response = gemini_last_response.unwrap();
+        let mut latest_response = gemini_response_part.unwrap();
         while latest_response["functionCall"]["name"].as_str() != Some("response_msg") {
             let mut res_objected_query = objected_query.clone();
             let fn_obj = &latest_response;
@@ -171,7 +183,7 @@ impl GeminiClientTrait for GeminiClient {
                 if fn_action.is_none() {
                     return Err(format!("Function {} not found", fn_name));
                 }
-                let fn_action = (fn_action.unwrap().action);
+                let fn_action = fn_action.unwrap().action;
 
                 let fn_res =  (fn_action)(argus).await;
                 command_result.push(fn_res.clone());
@@ -232,8 +244,6 @@ impl GeminiClientTrait for GeminiClient {
                 a.push(obj_part);
                 res_objected_query["contents"] = json!(a);
             }
-
-
             if command_try_count > 10 || hash_target == recent_hash {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API - FN > Error: {}", "Infinite loop detected"));
                 res_objected_query["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"] = json!(["response_msg"]);
