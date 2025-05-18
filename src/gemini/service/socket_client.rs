@@ -23,7 +23,7 @@ pub struct GeminiSocketClient {
 }
 
 impl GeminiSocketClient {
-    pub async fn new(
+    pub fn new(
         id: i64,
         url: String,
     ) -> Self {

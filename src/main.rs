@@ -7,7 +7,6 @@ mod setting;
 mod utils;
 mod web;
 #[cfg(test)] mod tests;
-#[macro_use] extern crate rocket;
 use web::server::server::get_rocket;
 use model::db::driver::connect_to_db;
 use libs::logger::{self, LOGGER,LogLevel};
@@ -18,7 +17,6 @@ use tokio::sync::Notify;
 
 
 async fn fn_discord_thread() {
-    
     let mut discord_manager = discord::discord_bot_manager::BotManager::new().await;
     LOGGER.log(LogLevel::Debug, "Discord > Starting...");
     discord_manager.run().await;

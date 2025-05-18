@@ -90,25 +90,62 @@ pub enum GeminiResponseModalities {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeminiLiveApiWebSocketMessage {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub setup: Option<BidiGenerateContentSetup>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_content: Option<BidiGenerateContentClientContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub real_time_input: Option<BidiGenerateContentRealTimeInput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_response: Option<BidiGenerateContentToolResponse>,
 }
 
 impl GeminiLiveApiWebSocketMessage {
-
+    // 첫 번째 메시지로 전송할 세션 구성
+    pub fn set_setup(&mut self, setup: BidiGenerateContentSetup) {
+        self.setup = Some(setup);
+        self.client_content = None;
+        self.real_time_input = None;
+        self.tool_response = None;
+    }
+    // 클라이언트에서 전송된 현재 대화의 증분 콘텐츠 업데이트
+    pub fn set_client_content(&mut self, client_content: BidiGenerateContentClientContent) {
+        self.client_content = Some(client_content);
+        self.setup = None;
+        self.real_time_input = None;
+        self.tool_response = None;
+    }
+    // 실시간 오디오, 동영상 또는 텍스트 입력
+    pub fn set_real_time_input(&mut self, real_time_input: BidiGenerateContentRealTimeInput) {
+        self.real_time_input = Some(real_time_input);
+        self.setup = None;
+        self.client_content = None;
+        self.tool_response = None;
+    }
+    // 서버에서 수신한 ToolCallMessage에 대한 응답
+    pub fn set_tool_response(&mut self, tool_response: BidiGenerateContentToolResponse) {
+        self.tool_response = Some(tool_response);
+        self.setup = None;
+        self.client_content = None;
+        self.real_time_input = None;
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BidiGenerateContentRealTimeInput{
-    pub mediaChunks: Option<Vec<GeminiInlineBlob>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_chunks: Option<Vec<GeminiInlineBlob>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub audio : Option<GeminiInlineBlob>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub video: Option<GeminiInlineBlob>,
-    pub activityStart: Option<ActivityStart>,
-    pub activityEnd: Option<ActivityEnd>,
-    pub audioStreamEnd: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_start: Option<ActivityStart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_end: Option<ActivityEnd>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_stream_end: Option<bool>,
     pub text:String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
