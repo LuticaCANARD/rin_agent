@@ -1,5 +1,7 @@
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
-use super::types::{GeminiContents, GeminiFunctionCall, GeminiGenerationConfig};
+use super::types::{GeminiContents, GeminiFunctionCall, GeminiFunctionResponse, GeminiGenerationConfig, GeminiInlineBlob, GroundingMetadata};
 
 //https://ai.google.dev/api/live?hl=ko#receive-messages
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -85,13 +87,35 @@ pub enum GeminiResponseModalities {
     Audio,
     ModalityUnspecified
 }
-
-pub enum GeminiLiveApiWebSocketMessage {
-    Setup(BidiGenerateContentSetup),
-    ClientContent,
-    RealtimeInput,
-    ToolResponse
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiLiveApiWebSocketMessage {
+    pub setup: Option<BidiGenerateContentSetup>,
+    pub client_content: Option<BidiGenerateContentClientContent>,
+    pub real_time_input: Option<BidiGenerateContentRealTimeInput>,
+    pub tool_response: Option<BidiGenerateContentToolResponse>,
 }
+
+impl GeminiLiveApiWebSocketMessage {
+
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BidiGenerateContentRealTimeInput{
+    pub mediaChunks: Option<Vec<GeminiInlineBlob>>,
+    pub audio : Option<GeminiInlineBlob>,
+    pub video: Option<GeminiInlineBlob>,
+    pub activityStart: Option<ActivityStart>,
+    pub activityEnd: Option<ActivityEnd>,
+    pub audioStreamEnd: Option<bool>,
+    pub text:String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ActivityStart;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ActivityEnd;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BidiGenerateContentSetup {
@@ -150,3 +174,49 @@ pub struct BidiGenerateContentToolCall{
 pub struct BidiGenerateContentToolCallCancellation{
     pub ids: Vec<String>
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BidiGenerateContentToolResponse{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_responses:Option<Vec<GeminiFunctionResponse>>
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BidiGenerateContentTranscription{
+    pub text:String
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BidiGenerateContentClientContent{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turns: Option<Vec<GeminiContents>>,
+    pub turn_complete: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BidiGenerateContentServerContent{
+    pub generation_complete: bool,
+    pub turn_complete: bool,
+    pub interrupted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grounding_metadata: Option<GroundingMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_transcription: Option<BidiGenerateContentTranscription>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_transcription: Option<BidiGenerateContentTranscription>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_turn: Option<GeminiContents>,
+}
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoAway{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_left:Option<Duration>,
+}
+

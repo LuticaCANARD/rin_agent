@@ -240,6 +240,34 @@ impl GeminiParts {
         self.executable_code = None;
         self.code_execution_result = None;
     }
+    pub fn set_file_data(&mut self, item:GeminiFileData) {
+        self.text = None;
+        self.inline_data = None;
+        self.function_call = None;
+        self.function_response = None;
+        self.file_data = Some(item);
+        self.executable_code = None;
+        self.code_execution_result = None;
+    }
+    pub fn set_executable_code(&mut self, item:GeminiExecutableCode) {
+        self.text = None;
+        self.inline_data = None;
+        self.function_call = None;
+        self.function_response = None;
+        self.file_data = None;
+        self.executable_code = Some(item);
+        self.code_execution_result = None;
+    }
+    pub fn set_code_execution_result(&mut self, item:GeminiExecutableCodeResult) {
+        self.text = None;
+        self.inline_data = None;
+        self.function_call = None;
+        self.function_response = None;
+        self.file_data = None;
+        self.executable_code = None;
+        self.code_execution_result = Some(item);
+    }
+    
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -362,3 +390,58 @@ pub struct GeminiFunctionDeclaration{
     pub response: Option<GeminiSchemaObject>,
 }
 
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroundingMetadata{
+    pub grounding_chunks: Vec<GroundingChunk>,
+    pub grounding_supports: Vec<GroundingSupport>,
+    pub web_search_queries: String,
+    pub search_entry_point: Option<SearchEntryPoint>,
+    pub retrieval_metadata: Option<RetrievalMetadata>,
+
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetrievalMetadata{
+    pub google_search_dynamic_retrieval_score: f32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchEntryPoint{
+    pub rendered_content:Option<String>,
+    pub sdk_blob:Option<String>,
+}
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroundingSupport{
+    pub grounding_chunk_indices: Vec<i32>,
+    pub confidence_scores: Vec<f32>,
+    pub segments: Vec<GroundingSegment>,
+
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroundingSegment{
+    pub part_index: i32,
+    pub start_index: i32,
+    pub end_index: i32,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroundingChunk{
+    //chunk_type Union type...
+    pub web:Option<GeminiWebResult>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiWebResult{
+    pub uri:String,
+    pub title:String,
+}
