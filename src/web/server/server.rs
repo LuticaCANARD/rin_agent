@@ -1,5 +1,8 @@
+use rocket::catch;
 use rocket::{fs::NamedFile, get, http::Status, post, Config};
 use super::super::api::statius::get_status;
+use rocket::routes;
+use rocket::catchers;
 
 use std::sync::LazyLock;
 

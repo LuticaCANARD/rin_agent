@@ -4,7 +4,7 @@ use crate::libs::logger::LOGGER;
 
 use super::socket_client::GeminiSocketClient;
 
-struct GeminiSocketManager {
+pub struct GeminiSocketManager {
     socket_map: BTreeMap<i64, GeminiSocketClient>,
 }
 

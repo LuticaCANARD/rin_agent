@@ -1,4 +1,5 @@
 use entity::tb_ai_context;
+use rocket::get;
 use sea_orm::{EntityTrait, QueryOrder, QuerySelect};
 
 use crate::model::db::driver::DB_CONNECTION_POOL;
