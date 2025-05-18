@@ -106,7 +106,6 @@ pub fn get_command() -> GeminiBotTools {
                 example: Some("2024-08-21 12:00:00".to_string()),
                 pattern: None
                 //Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
-
             },
         ],
         action: |params| Box::pin(async move { set_alarm(params).await }),

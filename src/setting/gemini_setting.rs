@@ -6,6 +6,7 @@ use serenity::all::User;
 use sqlx::types::chrono;
 
 
+use crate::gemini::schema::types::ThinkingConfig;
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
 pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-preview-03-25";
@@ -113,8 +114,9 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
 pub fn get_gemini_generate_config() -> serde_json::Value {
     // Gemini에게 질문을 보낼 때, 어떤 형식으로 질문을 보낼지에 대한 설정을 return
     json!({
-            "thinkingConfig": {
-                "includeThoughts": true,
+            "thinkingConfig": ThinkingConfig{
+                include_thoughts: true,
+                thinking_budget: 1000,
             },
             "temperature": 1.5,
             "topP": 0.965,
