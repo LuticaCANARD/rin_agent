@@ -6,7 +6,7 @@ use serenity::all::User;
 use sqlx::types::chrono;
 
 
-use crate::gemini::schema::types::ThinkingConfig;
+use crate::gemini::schema::types::{GeminiGenerationConfig, ThinkingConfig};
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
 pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-preview-03-25";
@@ -111,16 +111,31 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
         }
     }
 }
-pub fn get_gemini_generate_config() -> serde_json::Value {
+pub fn get_gemini_generate_config() -> GeminiGenerationConfig {
     // Gemini에게 질문을 보낼 때, 어떤 형식으로 질문을 보낼지에 대한 설정을 return
-    json!({
-            "thinkingConfig": ThinkingConfig{
-                include_thoughts: true,
-                thinking_budget: 1000,
-            },
-            "temperature": 1.5,
-            "topP": 0.965,
-    })
+    GeminiGenerationConfig{
+        stop_sequences:None,
+        response_mime_type: None,
+        response_schema: None,
+        response_modalities: None,
+        candidate_count: Some(1),
+        max_output_tokens: None,
+        temperature: Some(0.97),
+        top_p: Some(0.965),
+        top_k: None,
+        seed: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        response_logprobs: None,
+        logprobs: None,
+        enable_enhanced_civic_answers: None,
+        speech_config: None,
+        thinking_config: Some(ThinkingConfig{
+            include_thoughts: true,
+            thinking_budget: 1500,
+        }),
+        media_resolution: None,
+    }
 }
 
 macro_rules! load_gemini_tools {

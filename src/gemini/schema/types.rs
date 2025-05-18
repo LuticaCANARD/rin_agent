@@ -1,14 +1,17 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-#[serde(rename_all = "camelCase")]
+use serde_json::Value;
+
+use super::enums::{DynamicRetrievalConfigMode, GeminiCodeExecutionResultOutcome, GeminiContentRole, GeminiSchemaFormat, GeminiSchemaType};
 #[derive(Debug, Clone, PartialEq, Eq,Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ThinkingConfig {
     pub include_thoughts: bool,
     pub thinking_budget: i32,
 }
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HarmBlockThreshold{
     HarmBlockThresholdUnspecified,
     BlockLowAndAbove,
@@ -17,8 +20,8 @@ pub enum HarmBlockThreshold{
     BlockNone,
     Off
 }
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HarmCategory{
     HarmCategoryUnspecified,//카테고리가 지정되지 않았습니다.
     HarmCategoryDerogatory,//PaLM - ID 또는 보호 속성을 대상으로 하는 부정적이거나 유해한 댓글
@@ -33,69 +36,329 @@ pub enum HarmCategory{
     HarmCategoryDangerousContent,//Gemini - 위험한 콘텐츠
     HarmCategoryCivicIntegrity,//Gemini - 시민의 품위를 해치는 데 사용될 수 있는 콘텐츠
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SafetySetting{
     category: HarmCategory,
     threshold: HarmBlockThreshold
 }
 
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GeminiGenerationConfig {
 //  https://ai.google.dev/api/generate-content?hl=ko#generationconfig
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_sequences: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<GeminiSchema>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_modalities:Option<Vec<GeminiResponseModalities>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidate_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_logprobs: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_enhanced_civic_answers: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speech_config: Option<GeminiSpeechConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_config: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_resolution: Option<GeminiMediaResolution>,
     
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiSpeechConfig{
+    pub voice_config: Option<GeminiVoiceConfig>,
+    pub language_code:Option<String>,
+}
+
+#[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiVoiceConfig{
+    pub prebuilt_voice_config: Option<GeminiPrebuiltVoiceConfig>,
+}
+
+#[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiPrebuiltVoiceConfig{
+    pub voice_name:String
+}
+
+#[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GeminiMediaResolution{
+    MediaResolutionUnspecified,
+    MediaResolutionLow,
+    MediaResolutionMedium,
+    MediaResolutionHigh,
+}
+#[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GeminiResponseModalities {
+    #[serde(rename = "RESPONSE_MODALITY_UNSPECIFIED")]
+    ResponseModalityUnspecified,
+    #[serde(rename = "TEXT")]
+    Text,
+    #[serde(rename = "IMAGE")]
+    Image,
+    #[serde(rename = "AUDIO")]
+    Audio,
+    #[serde(rename = "VIDEO")]
+    Video,
+}
+
+
+
+#[derive(Debug, Clone,Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GeminiSchema {
     #[serde(rename="type")]
     pub schema_type: GeminiSchemaType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<GeminiSchemaFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nullable: Option<bool>,
-    #[serde(rename="enum")]
+    #[serde(rename="enum",skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_items: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min_items: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<BTreeMap<String, GeminiSchema>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min_properties: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_properties: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub example: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub any_of: Option<Vec<GeminiSchema>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub property_ordering: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<GeminiSchema>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub minimum: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum: Option<f32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum GeminiSchemaType {
-    STRING,
-    NUMBER,
-    INTEGER,
-    BOOLEAN,
-    ARRAY,
-    OBJECT,
-    NULL
+#[serde(rename_all = "camelCase")]
+pub struct GeminiContents{
+    pub parts:Vec<GeminiParts>,
+    pub role: GeminiContentRole
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiParts{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought: Option<bool>,
+    //--------------------------
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inline_data: Option<GeminiInlineBlob>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_call: Option<GeminiFunctionCall>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_response: Option<GeminiFunctionResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_data:Option<GeminiFileData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable_code:Option<GeminiExecutableCode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_execution_result:Option<GeminiExecutableCodeResult>,
+
+}
+impl GeminiParts {
+    pub fn set_text(&mut self, text: String) {
+        self.text = Some(text);
+        self.inline_data = None;
+        self.function_call = None;
+        self.function_response = None;
+        self.file_data = None;
+        self.executable_code = None;
+        self.code_execution_result = None;
+    }
+    pub fn set_inline_data(&mut self, item:GeminiInlineBlob) {
+        self.text = None;
+        self.inline_data = Some(item);
+        self.function_call = None;
+        self.function_response = None;
+        self.file_data = None;
+        self.executable_code = None;
+        self.code_execution_result = None;
+    }
+    pub fn set_function_call(&mut self, item:GeminiFunctionCall) {
+        self.text = None;
+        self.inline_data = None;
+        self.function_call = Some(item);
+        self.function_response = None;
+        self.file_data = None;
+        self.executable_code = None;
+        self.code_execution_result = None;
+    }
+    pub fn set_function_response(&mut self, item:GeminiFunctionResponse) {
+        self.text = None;
+        self.inline_data = None;
+        self.function_call = None;
+        self.function_response = Some(item);
+        self.file_data = None;
+        self.executable_code = None;
+        self.code_execution_result = None;
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiInlineBlob{
+    pub mime_type: String,
+    pub data: String
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiFunctionCall{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<BTreeMap<String,Value>>
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiFunctionResponse{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub name: String,
+    pub args: BTreeMap<String,Value>
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum GeminiSchemaFormat {
-    Float,
-    Double,
-    Int32,
-    Int64,
-    #[serde(rename = "enum")]
-    EnumString,
-    #[serde(rename = "date-time")]
-    DateTime,
+#[serde(rename_all = "camelCase")]
+pub struct GeminiFileData{
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    pub file_uri: String
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiExecutableCode{
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<BTreeMap<String,Value>>
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiExecutableCodeResult{
+    pub outcome: GeminiCodeExecutionResultOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiGenerationConfigTool{
+    pub function_declarations: Option<Vec<GeminiFunctionDeclaration>>,
+    pub google_search_retrieval: Option<GeminiGoogleSearchRetrieval>,
+    pub code_execution: Option<GeminiCodeExecutionTool>,
+    pub google_search: Option<GeminiGoogleSearchTool>,
+} 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiGoogleSearchTool;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiCodeExecutionTool;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiGoogleSearchRetrieval{
+    pub dynamic_retrieval_config:GeminiGoogleSearchRetrievalOption
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiGoogleSearchRetrievalOption{
+    pub mode:DynamicRetrievalConfigMode,
+    pub dynamic_threshold: f32,
+}
+
+fn get_object_type() -> GeminiSchemaType {
+    GeminiSchemaType::OBJECT
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiSchemaObject{
+    #[serde(rename="type",default="get_object_type")]
+    schema_type: GeminiSchemaType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nullable: Option<bool>,
+    pub properties: BTreeMap<String, GeminiSchema>,
+    pub required: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_properties: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_properties: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub example: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub any_of: Option<Vec<GeminiSchema>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub property_ordering: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<Box<GeminiSchemaObject>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiFunctionDeclaration{
+    pub name: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<GeminiSchemaObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<GeminiSchemaObject>,
+}
+
