@@ -1,3 +1,4 @@
+use crate::gemini::schema::live_api_types::BidiGenerateContentSetup;
 #[cfg(test)]
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::service::socket_client::GeminiSocketClient;
@@ -13,17 +14,26 @@ async fn make_client() {
     let gemini_token = env::var("GEMINI_API_KEY").unwrap();
 
     LOGGER.log(LogLevel::Debug, format!("GEMINI_API_KEY: {}", gemini_token).as_str());
-    let mut client = GeminiSocketClient::new(1, "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent".to_string());
+    let mut client = GeminiSocketClient::<i64>::new(
+        1, 
+        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent".to_string(),
+        BidiGenerateContentSetup{
+            model:"models/chat-bison-001".to_string(),
+            generation_config: todo!(), 
+            system_instruction: todo!(), 
+            tools: todo!(), 
+            realtime_input_config: todo!(), 
+            session_resumption: todo!(), 
+            context_window_compression: todo!(), 
+            input_audio_transcription: todo!(), 
+            output_audio_generation: todo!() 
+        }
+    );
     let connection_result = client.connect().await;
     if let Err(e) = connection_result {
         LOGGER.log(LogLevel::Error, format!("Failed to connect: {}", e).as_str());
     }
     
-    let connected = client.start_managing_connection(message_handler_tx).await;
-    if let Err(e) = connected {
-        LOGGER.log(LogLevel::Error, format!("Failed to start managing connection: {}", e).as_str());
-    }
-
     
 
 
