@@ -3,6 +3,7 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::gemini::service::socket_client::GeminiSocketClient;
 use crate::gemini::service::socket_manager;
 use dotenv::dotenv;
+use tokio_tungstenite::tungstenite::Message;
 use std::env;
 
 
@@ -13,15 +14,19 @@ async fn make_client() {
 
     LOGGER.log(LogLevel::Debug, format!("GEMINI_API_KEY: {}", gemini_token).as_str());
     let mut client = GeminiSocketClient::new(1, "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent".to_string());
-    let result = client.connect().await;
-    match result {
-        Ok(_) => {
-            LOGGER.log(LogLevel::Debug, "Connected successfully");
-        }
-        Err(e) => {
-            LOGGER.log(LogLevel::Error, format!("Connection failed: {}", e).as_str());
-        }
+    let connection_result = client.connect().await;
+    if let Err(e) = connection_result {
+        LOGGER.log(LogLevel::Error, format!("Failed to connect: {}", e).as_str());
     }
+    
+    let connected = client.start_managing_connection(message_handler_tx).await;
+    if let Err(e) = connected {
+        LOGGER.log(LogLevel::Error, format!("Failed to start managing connection: {}", e).as_str());
+    }
+
+    
+
+
 }
 
 #[test]
