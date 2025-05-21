@@ -62,7 +62,7 @@ async fn make_client() {
         1, 
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent".to_string(),
         BidiGenerateContentSetup{
-            model:GEMINI_MODEL_PRO.to_string(),
+            model:"gemini-2.5-flash-live-001".to_string(),
             generation_config, 
             system_instruction, 
             tools,
@@ -78,6 +78,7 @@ async fn make_client() {
         LOGGER.log(LogLevel::Error, format!("Failed to connect: {}", e).as_str());
     }
     
+    let message = "Hello, Gemini!";
     
 
 
