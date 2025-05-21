@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use super::types::{GeminiContents, GeminiFunctionCall, GeminiFunctionResponse, GeminiGenerationConfig, GeminiInlineBlob, GroundingMetadata};
+use super::types::{GeminiContents, GeminiFunctionCall, GeminiFunctionResponse, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiInlineBlob, GroundingMetadata};
 
 //https://ai.google.dev/api/live?hl=ko#receive-messages
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -162,7 +162,7 @@ pub struct BidiGenerateContentSetup {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_instruction:Option<GeminiContents>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Vec<GeminiLiveApiTool>>,
+    pub tools: Option<Vec<GeminiGenerationConfigTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub realtime_input_config: Option<RealtimeInputConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -173,6 +173,21 @@ pub struct BidiGenerateContentSetup {
     pub input_audio_transcription: Option<AudioTranscriptionConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_audio_generation: Option<AudioTranscriptionConfig>,
+}
+impl Default for BidiGenerateContentSetup {
+    fn default() -> Self {
+        BidiGenerateContentSetup {
+            model: "gemini-2.0-flash-live-001".to_string(),
+            generation_config: None,
+            system_instruction: None,
+            tools: None,
+            realtime_input_config: None,
+            session_resumption: None,
+            context_window_compression: None,
+            input_audio_transcription: None,
+            output_audio_generation: None
+        }
+    }
 }
 
 

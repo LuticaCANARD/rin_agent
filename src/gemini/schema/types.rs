@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, default};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -83,7 +83,31 @@ pub struct GeminiGenerationConfig {
     pub thinking_config: Option<ThinkingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_resolution: Option<GeminiMediaResolution>,
-    
+}
+
+impl Default for GeminiGenerationConfig {
+    fn default ()-> Self {
+        GeminiGenerationConfig {
+            candidate_count: Some(1),
+            max_output_tokens: Some(100),
+            temperature: Some(0.5),
+            top_p: Some(0.9),
+            top_k: Some(40),
+            presence_penalty: Some(0.0),
+            frequency_penalty: Some(0.0),
+            response_modalities: None,
+            stop_sequences: None,
+            response_mime_type: None,
+            response_schema: None,
+            response_logprobs: None,
+            logprobs: None,
+            enable_enhanced_civic_answers: None,
+            speech_config: None,
+            thinking_config: None,
+            media_resolution: None,
+            seed: None,
+        }
+    }
 }
 #[derive(Debug, Clone,Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,6 +293,20 @@ impl GeminiParts {
     }
     
 }
+impl Default for GeminiParts {
+    fn default() -> Self {
+        GeminiParts {
+            thought: None,
+            text: None,
+            inline_data: None,
+            function_call: None,
+            function_response: None,
+            file_data: None,
+            executable_code: None,
+            code_execution_result: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -329,6 +367,16 @@ pub struct GeminiGenerationConfigTool{
     pub code_execution: Option<GeminiCodeExecutionTool>,
     pub google_search: Option<GeminiGoogleSearchTool>,
 } 
+impl Default for GeminiGenerationConfigTool {
+    fn default() -> Self {
+        GeminiGenerationConfigTool {
+            function_declarations: None,
+            google_search_retrieval: None,
+            code_execution: None,
+            google_search: None,
+        }
+    }
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeminiGoogleSearchTool;
