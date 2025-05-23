@@ -1,10 +1,12 @@
+use gemini_live_api::types::enums::GeminiSchemaType;
 use serde_json::{json, Value};
 
-use crate::gemini::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputType, GeminiBotToolInputValue, GeminiBotTools};
+use crate::gemini::types::{generate_input_to_dict, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotTools};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::pin::Pin;
 use std::future::Future;
+use gemini_live_api::types::enums::GeminiSchemaFormat;
 
 async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<GeminiActionResult, String> {
     let time = params.get("time");
@@ -49,9 +51,9 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "time".to_string(),
                 description: "Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
-                input_type: GeminiBotToolInputType::STRING,
+                input_type: GeminiSchemaType::STRING,
                 required: true,
-                format: Some("date-time".to_string()),
+                format: Some(GeminiSchemaFormat::DateTime),
                 //Some("2024-03-21 12:00:00".to_string()),
                 default: None,
                 enum_values: None,
@@ -63,19 +65,21 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "timezone".to_string(),
                 description: "Set the timezone for the alarm (UTC+9 => +9, UTC-1 = -1)".to_string(),
-                input_type: GeminiBotToolInputType::INTEGER,
+                input_type: GeminiSchemaType::INTEGER,
                 required: true,
-                format: Some("int32".to_string()),
+                format: Some(GeminiSchemaFormat::Int32),
                 default: None,
                 enum_values: None,
-                example: Some("UTC+9 => +9, UTC-1 = -1".to_string()),
+                example: Some(
+                    json!("UTC+9 => +9, UTC-1 = -1".to_string())
+                ),
                 pattern: None,
                 //Some("^[+-][0-9]{1,2}$".to_string()),
 
             },
             GeminiBotToolInput {
                 name: "message".to_string(),
-                input_type: GeminiBotToolInputType::STRING,
+                input_type: GeminiSchemaType::STRING,
                 description: "알람과 함꼐 주인님께 보낼 메시지 혹은, 주인님이 알림에 메모한 사항.".to_string(),
                 required: false,
                 format: None,
@@ -87,27 +91,36 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "repeat".to_string(),
                 description: "반복 주기(cron 표현식)".to_string(),
-                input_type: GeminiBotToolInputType::STRING,
+                input_type: GeminiSchemaType::STRING,
                 required: false,
                 format: None,
                 default: None,
                 enum_values: None,
-                example: Some("* * * * * *".to_string()),
+                example: Some(
+                    json!("* * * * * *".to_string())),
                 pattern: None,
             },
             GeminiBotToolInput {
                 name: "end_date".to_string(),
                 description: "종료되는 일자. (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
-                input_type: GeminiBotToolInputType::STRING,
+                input_type: GeminiSchemaType::STRING,
                 required: false,
-                format: Some("date-time".to_string()),
+                format: Some(
+                    GeminiSchemaFormat::DateTime
+                ),
                 default: None,
                 enum_values: None,
-                example: Some("2024-08-21 12:00:00".to_string()),
+                example: Some(
+                    json!("2024-08-21 12:00:00".to_string())),
                 pattern: None
                 //Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
             },
-        ],
+        ].into_iter().map(generate_input_to_dict).collect(),
         action: |params| Box::pin(async move { set_alarm(params).await }),
+        result_example: Some(serde_json::json!({
+            "result_message": "Alarm set for 2024-03-21 12:00:00 with message: Hello!",
+            "result": { "res": "Alarm set for 2024-03-21 12:00:00 with message: Hello!" },
+            "error": null
+        })),
     }
 }

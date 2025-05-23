@@ -12,7 +12,7 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::setting::gemini_setting::{get_begin_query, get_gemini_bot_tools, get_gemini_generate_config, GEMINI_BOT_TOOLS, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
-use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputType, GeminiBotToolInputValue};
+use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue};
 use super::utils::translate_to_gemini_param;
 
 pub struct GeminiClient {
@@ -172,6 +172,7 @@ impl GeminiClientTrait for GeminiClient {
                     return Err(format!("Function {} not found", fn_name));
                 }
                 let fn_action = fn_action.unwrap().action;
+
 
                 let fn_res =  (fn_action)(argus).await;
                 command_result.push(fn_res.clone());

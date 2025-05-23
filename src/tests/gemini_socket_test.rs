@@ -9,7 +9,7 @@ use gemini_live_api::service::socket_client_manager::GeminiSocketManager;
 use crate::setting::gemini_setting::GEMINI_MODEL_PRO;
 use dotenv::dotenv;
 use tokio_tungstenite::tungstenite::Message;
-use std::env;
+use std::{env, thread};
 
 
 #[tokio::test]
@@ -60,9 +60,9 @@ async fn make_client() {
 
     let mut client = GeminiSocketClient::<i64>::new(
         1, 
-        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent".to_string(),
+        format!("wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={}",gemini_token).to_string(),
         BidiGenerateContentSetup{
-            model:"gemini-2.5-flash-live-001".to_string(),
+            model:"gemini-2.5-flash-preview-05-20".to_string(),
             generation_config, 
             system_instruction, 
             tools,
@@ -92,13 +92,16 @@ async fn make_client() {
         ]),
         turn_complete: Some(true),
     };
-    client.send_new_part(
+     client.send_new_part(
         msgcontent
     ).await
         .expect("Failed to send message");
-    
-
-    
+    client.listen(
+        |msg| {
+            LOGGER.log(LogLevel::Debug, format!("Received message: {:?}", msg).as_str());
+        }
+    ).await;
+   
 
 
 }

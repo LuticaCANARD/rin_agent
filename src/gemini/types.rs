@@ -1,5 +1,7 @@
-use std::{collections::hash_map, future::Future, pin::Pin};
+use std::{collections::{hash_map, BTreeMap}, default, future::Future, pin::Pin};
 
+use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, GeminiSchema};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone)]
@@ -33,40 +35,6 @@ pub struct GeminiChatChunk {
 }
 
 #[derive(Debug, Clone)]
-pub enum GeminiBotToolInputType {
-    STRING,
-    NUMBER,
-    INTEGER,
-    BOOLEAN,
-    ARRAY(Vec<GeminiBotToolInputType>),
-    OBJECT(Value), // JSON 객체
-    NULL,
-}
-impl GeminiBotToolInputType {
-    pub fn to_string(&self) -> String {
-        match self {
-            GeminiBotToolInputType::STRING=> "STRING".to_string(),
-            GeminiBotToolInputType::NUMBER=> "number".to_string(),
-            GeminiBotToolInputType::INTEGER => "integer".to_string(),
-            GeminiBotToolInputType::BOOLEAN => "BOOLEAN".to_string(),
-            GeminiBotToolInputType::ARRAY(arr) => format!("{:?}", arr),
-            GeminiBotToolInputType::OBJECT(obj) => obj.to_string(),
-            GeminiBotToolInputType::NULL => "null".to_string(),
-        }
-    }
-    pub fn to_schema(&self) -> serde_json::Value {
-        match self {
-            GeminiBotToolInputType::STRING => json!({"type": "STRING"}),
-            GeminiBotToolInputType::NUMBER => json!({"type": "NUMBER"}),
-            GeminiBotToolInputType::INTEGER => json!({"type": "INTEGER"}),
-            GeminiBotToolInputType::BOOLEAN => json!({"type": "BOOLEAN"}),
-            GeminiBotToolInputType::ARRAY(arr) => json!({"type": "ARRAY", "items": arr.to_vec().into_iter().map(|x| x.to_schema()).collect::<Vec<_>>() }),
-            GeminiBotToolInputType::OBJECT(obj) => json!({"type": "OBJECT", "properties": obj}),
-            GeminiBotToolInputType::NULL => json!({"type": "NULL"}),
-        }
-    }
-}
-#[derive(Debug, Clone)]
 pub enum GeminiBotToolInputValueType {
     STRING(String),
     NUMBER(f64),
@@ -97,25 +65,60 @@ impl GeminiBotToolInputValueType {
 pub struct GeminiBotToolInput {
     pub name: String,
     pub description: String,
-    pub input_type: GeminiBotToolInputType,
+    pub input_type: GeminiSchemaType,
     pub required: bool,
-    pub format: Option<String>,
+    pub format: Option<GeminiSchemaFormat>,
     pub pattern: Option<String>,
-    pub default: Option<GeminiBotToolInputType>,
-    pub enum_values: Option<Vec<GeminiBotToolInputValueType>>,
-    pub example: Option<String>,
+    pub default: Option<Value>,
+    pub enum_values: Option<Vec<String>>,
+    pub example: Option<Value>,
 }
+
+pub fn generate_to_schema(input: &GeminiBotToolInput) -> GeminiSchema {
+    GeminiSchema{
+        schema_type: input.input_type.clone(),
+        title: Some(input.name.clone()),
+        description: Some(input.description.clone()),
+        format: input.format.clone(),
+        pattern: input.pattern.clone(),
+        enum_values: input.enum_values.clone(),
+        default: input.default.clone(),
+        example: input.example.clone(),
+        ..Default::default()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GeminiBotToolInputValue {
     pub name: String,
     pub value: GeminiBotToolInputValueType
 }
+pub type GeminiAPIObjectStruct = BTreeMap<String, GeminiBotToolInput>;
 
 pub struct GeminiBotTools {
     pub name: String,
     pub description: String,
-    pub parameters: Vec<GeminiBotToolInput>,    
+    pub parameters: GeminiAPIObjectStruct,    
     pub action: fn(hash_map::HashMap<String, GeminiBotToolInputValue>) 
-        -> Pin<Box<dyn Future<Output = Result<GeminiActionResult,String>> + Send>>
-    
+        -> Pin<Box<dyn Future<Output = Result<GeminiActionResult,String>> + Send>>,
+    pub result_example: Option<Value>,
+}
+impl Default for GeminiBotTools{
+    fn default() -> Self {
+        GeminiBotTools {
+            name: "default".to_string(),
+            description: "default".to_string(),
+            parameters: GeminiAPIObjectStruct::new(),
+            action: |params| Box::pin(async move { Ok(GeminiActionResult{
+                result_message: "default".to_string(),
+                result: json!({}),
+                error: None,
+            }) }),
+            result_example: None,
+        }
+    }
+}
+
+pub fn generate_input_to_dict(input: GeminiBotToolInput) -> (String, GeminiBotToolInput) {
+    (input.name.clone(), input)
 }

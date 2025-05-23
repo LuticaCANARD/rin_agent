@@ -10,8 +10,7 @@ use tokio_tungstenite::{
 };
 use futures_util::{
     stream::{
-        SplitSink, 
-        SplitStream
+        self, SplitSink, SplitStream
     }, 
     SinkExt, 
     StreamExt
@@ -22,13 +21,13 @@ use std::{
 };
 
 use crate::{
-    types::live_api_types::{
-        BidiGenerateContentClientContent, 
-        BidiGenerateContentServerMessage, 
-        BidiGenerateContentSetup
-    }, libs::logger::{
+    libs::logger::{
         LogLevel, 
         LOGGER
+    }, types::live_api_types::{
+        BidiGenerateContentClientContent, 
+        BidiGenerateContentServerMessage, 
+        BidiGenerateContentSetup, GeminiLiveApiWebSocketMessage
     }
 }; // 재연결 시 딜레이 등에 사용
 
@@ -71,7 +70,9 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
     }
 
     // 실제 연결 시도
-    pub async fn connect(&mut self) -> Result<(),String> {
+    pub async fn connect(
+        &mut self,
+    ) -> Result<(),String> {
         LOGGER.log(LogLevel::Info,
             format!("Attempting to connect to WebSocket: {}", self.url).as_str()
         );
@@ -81,7 +82,15 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
                     format!("Connected to WebSocket: {}. Response: {:?}", self.url, response).as_str()
                 );
                 let (tx, rx) = socket_stream.split();
+                let mut init_msg= GeminiLiveApiWebSocketMessage::default();
+                init_msg.set_setup(self.connect_init.clone());
+                let init_msg = init_msg;
                 self.tx = Some(tx);
+                self.send_message(
+                    serde_json::to_string(&init_msg)
+                        .map_err(|e| format!("Failed to serialize message: {}", e))?
+                ).await
+                    .map_err(|e| format!("Failed to send init: {}", e))?;
                 self.state = ClientState::Connected; // 연결 상태로 변경
                 self.rx = Some(rx); 
                 Ok(())
@@ -100,9 +109,13 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
 
     async fn send_message(&mut self, message: String) -> Result<(), String> {
         if let Some(tx) = self.tx.as_mut() {
-            tx.send(Message::Text(message.into()))
+            let message = Message::Text(message.into());
+            LOGGER.log(LogLevel::Debug,
+                format!("Sending message: {}", message).as_str()
+            );
+            tx.send(message)
                 .await
-                .map_err(|e| format!("Failed to send text message: {}", e))
+                .map_err(|e| format!("Failed to send message: {}", e))
         } else {
             Err("WebSocket not connected or tx is not available.".to_string())
         }
@@ -110,6 +123,7 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
 
     async fn send_byte(&mut self, message: Vec<u8>) -> Result<(), String> {
         if let Some(tx) = self.tx.as_mut() {
+
             tx.send(Message::Binary(message.into()))
                 .await
                 .map_err(|e| format!("Failed to send binary message: {}", e))
@@ -147,6 +161,9 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
     {
         if let Some(rx) = self.rx.as_mut() {
             while let Some(msg) = rx.next().await {
+                LOGGER.log(LogLevel::Debug,
+                    format!("Received message: {:?}", msg).as_str()
+                );
                 if let Ok(msg) = msg {
                     if msg.is_text() {
                         let text = msg.into_text().unwrap();

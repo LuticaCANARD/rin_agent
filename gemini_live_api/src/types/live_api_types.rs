@@ -130,6 +130,16 @@ impl GeminiLiveApiWebSocketMessage {
         self.real_time_input = None;
     }
 }
+impl Default for GeminiLiveApiWebSocketMessage {
+    fn default() -> Self {
+        GeminiLiveApiWebSocketMessage {
+            setup: None,
+            client_content: None,
+            real_time_input: None,
+            tool_response: None
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

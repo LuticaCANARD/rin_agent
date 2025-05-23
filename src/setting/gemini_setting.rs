@@ -157,7 +157,8 @@ macro_rules! load_gemini_tools {
 pub static GEMINI_BOT_TOOLS: LazyLock<hash_map::HashMap<String, GeminiBotTools>> = LazyLock::new(|| {
     load_gemini_tools!(
         set_alarm,
-        discord_response
+        discord_response,
+        searching
     )
     .into_iter()
     .map(|tool| (tool.name.clone(), tool))
@@ -177,6 +178,5 @@ pub fn get_gemini_bot_tools()-> serde_json::Value {
 
     json!({
         "functionDeclarations":tools,
-        // "google_search": {}
     })
 }

@@ -1,11 +1,11 @@
 use std::env;
 
-use crate::{gemini::types::GeminiImageInputType, libs::logger::LOGGER};
+use crate::{gemini::types::{generate_to_schema, GeminiImageInputType}, libs::logger::LOGGER};
 use base64::Engine;
 use serde_json::json;
 use reqwest::header::{HeaderName, HeaderValue};
 
-use super::types::{GeminiBotToolInputType, GeminiBotToolInputValueType, GeminiBotTools, GeminiChatChunk};
+use super::types::{ GeminiBotToolInputValueType, GeminiBotTools, GeminiChatChunk};
 
 
 
@@ -203,67 +203,24 @@ pub async fn upload_image_to_gemini(image: GeminiImageInputType,display_name:Str
 }
 
 pub fn generate_fns_to_gemini(tool:&GeminiBotTools) -> serde_json::Value {
-let mut properties = serde_json::Map::new();
+    let mut properties = serde_json::Map::new();
     let mut required_param = Vec::new();
 
-    for parameter in &tool.parameters {
-        // 각 파라미터를 properties 객체에 추가
+    let keys = tool.parameters.keys();
+    for parameter_key in keys {
+        let param = tool.parameters.get(parameter_key).unwrap();
+
         properties.insert(
-            parameter.name.clone(),
-            {
-                let mut schema = parameter.input_type.to_schema();
-                if let Some(desc) = schema.get_mut("description") {
-                    // 이미 description이 있으면 덮어쓰기
-                    *desc = serde_json::Value::String(parameter.description.to_string().clone());
-                } else {
-                    schema.as_object_mut().unwrap().insert(
-                        "description".to_string(),
-                        serde_json::Value::String(parameter.description.to_string().clone()),
-                    );
-                }
-                if let Some(format) = &parameter.format {
-                    schema.as_object_mut().unwrap().insert(
-                        "format".to_string(),
-                        serde_json::Value::String(format.to_string()),
-                    );
-                }
-                if let Some(example) = &parameter.example {
-                    schema.as_object_mut().unwrap().insert(
-                        "example".to_string(),
-                        serde_json::Value::String(example.to_string()),
-                    );
-                }
-                if let Some(pattern) = &parameter.pattern {
-                    schema.as_object_mut().unwrap().insert(
-                        "pattern".to_string(),
-                        serde_json::Value::String(pattern.to_string()),
-                    );
-                }
-                if let Some(default) = &parameter.default {
-                    schema.as_object_mut().unwrap().insert(
-                        "default".to_string(),
-                        default.to_schema(),
-                    );
-                }
-                if let Some(enum_values) = &parameter.enum_values {
-                    schema.as_object_mut().unwrap().insert(
-                        "enum".to_string(),
-                        serde_json::Value::Array(
-                            enum_values
-                                .iter()
-                                .map(|v| v.to_string())
-                                .map(|v| serde_json::Value::String(v))
-                                .collect(),
-                        ),
-                    );
-                }
-                schema
-            }
+            parameter_key.to_string(), 
+            json!(generate_to_schema(&param))
         );
-        if parameter.required {
-            required_param.push(parameter.name.clone());
+
+        if param.required {
+            required_param.push(param.name.clone());
         }
     }
+
+
     json!({
         "name": tool.name,
         "description": tool.description,

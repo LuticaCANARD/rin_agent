@@ -204,6 +204,32 @@ pub struct GeminiSchema {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum: Option<f32>,
 }
+impl Default for GeminiSchema {
+    fn default() -> Self {
+        GeminiSchema {
+            schema_type: GeminiSchemaType::STRING,
+            format: None,
+            title: None,
+            description: None,
+            nullable: None,
+            enum_values: None,
+            max_items: None,
+            min_items: None,
+            properties: None,
+            required: None,
+            min_properties: None,
+            max_properties: None,
+            pattern: None,
+            example: None,
+            any_of: None,
+            property_ordering: None,
+            default: None,
+            items: None,
+            minimum: None,
+            maximum: None
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
