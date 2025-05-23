@@ -3,7 +3,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, Web
 use futures_util::{stream::{SplitSink, SplitStream}, SinkExt, StreamExt};
 use std::{fmt::Debug, time::Duration};
 
-use crate::{gemini::schema::live_api_types::BidiGenerateContentSetup, libs::logger::{LogLevel, LOGGER}}; // 재연결 시 딜레이 등에 사용
+use crate::{gemini::schema::live_api_types::{BidiGenerateContentClientContent, BidiGenerateContentServerMessage, BidiGenerateContentSetup}, libs::logger::{LogLevel, LOGGER}}; // 재연결 시 딜레이 등에 사용
 
 // 클라이언트 상태를 나타내는 Enum (선택 사항)
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +19,8 @@ pub enum ClientState {
 
 pub struct GeminiSocketClient<TKey: Ord + Debug+Clone> {
     pub id: TKey,
-    tx: Option<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>, // Option으로 변경하여 재연결 시 관리 용이
+    tx: Option<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>,
+    rx: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>, // 추가
     url: String, // 재연결 시 사용
     state: ClientState,
     connect_init:BidiGenerateContentSetup
@@ -34,7 +35,8 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
         // 초기에는 tx가 None일 수 있으므로, 실제 연결은 별도 메서드 (connect)에서 처리
         GeminiSocketClient {
             id,
-            tx: None,
+            tx: None, // 송신
+            rx: None, // 수신
             url,
             state: ClientState::Initial, // 초기 상태
             connect_init
@@ -42,9 +44,7 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
     }
 
     // 실제 연결 시도
-    pub async fn connect(&mut self) -> Result<
-    SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    String> {
+    pub async fn connect(&mut self) -> Result<(),String> {
         LOGGER.log(LogLevel::Info,
             format!("Attempting to connect to WebSocket: {}", self.url).as_str()
         );
@@ -56,9 +56,8 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
                 let (tx, rx) = socket_stream.split();
                 self.tx = Some(tx);
                 self.state = ClientState::Connected; // 연결 상태로 변경
-
-
-                Ok(rx)
+                self.rx = Some(rx); 
+                Ok(())
             }
             Err(e) => {
                 LOGGER.log(LogLevel::Error,
@@ -69,9 +68,8 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
         }
     }
 
+
     // 리스닝 태스크와 재연결 로직 관리
-
-
 
     async fn send_message(&mut self, message: String) -> Result<(), String> {
         if let Some(tx) = self.tx.as_mut() {
@@ -107,6 +105,30 @@ impl<TKey: Ord + Debug+Clone> GeminiSocketClient<TKey> {
         }
     }
     
-
-
+    pub async fn send_new_part(
+        &mut self,
+        part:BidiGenerateContentClientContent
+    ) -> Result<(), String> {
+        let str_msg = serde_json::to_string(&part)
+            .map_err(|e| format!("Failed to serialize message: {}", e))?;
+        self.send_message(str_msg).await
+            .map_err(|e| format!("Failed to send message: {}", e))
+    }
+    pub async fn listen<F>(&mut self, mut handler: F)
+    where
+        F: FnMut(BidiGenerateContentServerMessage) + Send,
+    {
+        if let Some(rx) = self.rx.as_mut() {
+            while let Some(msg) = rx.next().await {
+                if let Ok(msg) = msg {
+                    if msg.is_text() {
+                        let text = msg.into_text().unwrap();
+                        let parsed_msg: BidiGenerateContentServerMessage = serde_json::from_str(&text)
+                            .expect("Failed to parse message");
+                        handler(parsed_msg);
+                    }
+                }
+            }
+        }
+    }
 }

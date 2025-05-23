@@ -1,5 +1,5 @@
 use crate::gemini::schema::enums::GeminiContentRole;
-use crate::gemini::schema::live_api_types::{BidiGenerateContentSetup, ContextWindowCompression, GeminiLiveApiTool, SessionResumptionConfig};
+use crate::gemini::schema::live_api_types::{BidiGenerateContentClientContent, BidiGenerateContentSetup, ContextWindowCompression, GeminiLiveApiTool, SessionResumptionConfig};
 use crate::gemini::schema::types::{GeminiContents, GeminiFunctionDeclaration, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiGoogleSearchTool, GeminiParts};
 use crate::gemini::types::GeminiBotTools;
 #[cfg(test)]
@@ -79,6 +79,25 @@ async fn make_client() {
     }
     
     let message = "Hello, Gemini!";
+    let mut part_msg = GeminiParts::default();
+    part_msg.set_text(message.to_string());
+    
+    let parts = vec![part_msg];
+    let msgcontent = BidiGenerateContentClientContent{
+        turns: Some(vec![
+            GeminiContents {
+                parts,
+                role: GeminiContentRole::User
+            }
+        ]),
+        turn_complete: Some(true),
+    };
+    client.send_new_part(
+        msgcontent
+    ).await
+        .expect("Failed to send message");
+    
+
     
 
 

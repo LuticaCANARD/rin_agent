@@ -272,3 +272,22 @@ pub struct GoAway{
     pub time_left:Option<Duration>,
 }
 
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionResumptionUpdate{
+    pub new_handle: Option<String>,
+    pub resumable: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BidiGenerateContentServerMessage {
+    pub setup_complete: Option<BidiGenerateContentSetupComplete>,
+    pub server_content: Option<BidiGenerateContentServerContent>,
+    pub go_away: Option<GoAway>,
+    pub tool_call: Option<BidiGenerateContentToolCall>,
+    pub tool_call_cancellation: Option<BidiGenerateContentToolCallCancellation>,
+    pub session_resumption_update: Option<SessionResumptionUpdate>,
+}
