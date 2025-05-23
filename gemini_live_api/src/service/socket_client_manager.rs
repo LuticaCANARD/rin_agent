@@ -1,7 +1,11 @@
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{
+    collections::BTreeMap, 
+    fmt::Debug
+};
 
-use crate::{gemini::schema::live_api_types::BidiGenerateContentSetup, libs::logger::LOGGER};
+use crate::types::live_api_types::BidiGenerateContentSetup;
 
+use crate::libs::logger::LOGGER;
 use super::socket_client::GeminiSocketClient;
 
 pub struct GeminiSocketManager<TKey: Ord+Debug+Clone> {

@@ -6,7 +6,10 @@ use serenity::all::User;
 use sqlx::types::chrono;
 
 
-use crate::gemini::schema::types::{GeminiGenerationConfig, ThinkingConfig};
+use gemini_live_api::types::{
+    GeminiGenerationConfig, 
+    ThinkingConfig
+};
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
 pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-preview-03-25";

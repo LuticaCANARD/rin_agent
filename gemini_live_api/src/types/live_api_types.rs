@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use super::types::{GeminiContents, GeminiFunctionCall, GeminiFunctionResponse, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiInlineBlob, GroundingMetadata};
+use super::{GeminiContents, GeminiFunctionCall, GeminiFunctionResponse, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiInlineBlob, GroundingMetadata};
 
 //https://ai.google.dev/api/live?hl=ko#receive-messages
 #[derive(Debug, Clone, Deserialize, Serialize)]

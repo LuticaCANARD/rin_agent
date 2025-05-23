@@ -1,11 +1,11 @@
-use crate::gemini::schema::enums::GeminiContentRole;
-use crate::gemini::schema::live_api_types::{BidiGenerateContentClientContent, BidiGenerateContentSetup, ContextWindowCompression, GeminiLiveApiTool, SessionResumptionConfig};
-use crate::gemini::schema::types::{GeminiContents, GeminiFunctionDeclaration, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiGoogleSearchTool, GeminiParts};
+use gemini_live_api::types::enums::GeminiContentRole;
+use gemini_live_api::types::live_api_types::{BidiGenerateContentClientContent, BidiGenerateContentSetup, ContextWindowCompression, GeminiLiveApiTool, SessionResumptionConfig};
+use gemini_live_api::types::{GeminiContents, GeminiFunctionDeclaration, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiGoogleSearchTool, GeminiParts};
 use crate::gemini::types::GeminiBotTools;
 #[cfg(test)]
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::gemini::service::socket_client::GeminiSocketClient;
-use crate::gemini::service::socket_manager;
+use gemini_live_api::service::socket_client::GeminiSocketClient;
+use gemini_live_api::service::socket_client_manager::GeminiSocketManager;
 use crate::setting::gemini_setting::GEMINI_MODEL_PRO;
 use dotenv::dotenv;
 use tokio_tungstenite::tungstenite::Message;

@@ -1,9 +1,36 @@
-use tokio::{net::TcpStream, sync::mpsc};
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use futures_util::{stream::{SplitSink, SplitStream}, SinkExt, StreamExt};
-use std::{fmt::Debug, time::Duration};
+use tokio::{
+    net::TcpStream,
+    sync::mpsc
+};
+use tokio_tungstenite::{
+    connect_async, 
+    tungstenite::Message, 
+    MaybeTlsStream, 
+    WebSocketStream
+};
+use futures_util::{
+    stream::{
+        SplitSink, 
+        SplitStream
+    }, 
+    SinkExt, 
+    StreamExt
+};
+use std::{
+    fmt::Debug, 
+    time::Duration
+};
 
-use crate::{gemini::schema::live_api_types::{BidiGenerateContentClientContent, BidiGenerateContentServerMessage, BidiGenerateContentSetup}, libs::logger::{LogLevel, LOGGER}}; // 재연결 시 딜레이 등에 사용
+use crate::{
+    types::live_api_types::{
+        BidiGenerateContentClientContent, 
+        BidiGenerateContentServerMessage, 
+        BidiGenerateContentSetup
+    }, libs::logger::{
+        LogLevel, 
+        LOGGER
+    }
+}; // 재연결 시 딜레이 등에 사용
 
 // 클라이언트 상태를 나타내는 Enum (선택 사항)
 #[derive(Debug, Clone, PartialEq)]

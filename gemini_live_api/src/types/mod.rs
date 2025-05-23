@@ -1,9 +1,16 @@
+pub mod enums;
+pub mod live_api_types;
+
+
+
+
+
 use std::{collections::BTreeMap, default};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::enums::{DynamicRetrievalConfigMode, GeminiCodeExecutionResultOutcome, GeminiContentRole, GeminiSchemaFormat, GeminiSchemaType};
+use enums::{DynamicRetrievalConfigMode, GeminiCodeExecutionResultOutcome, GeminiContentRole, GeminiSchemaFormat, GeminiSchemaType};
 #[derive(Debug, Clone, PartialEq, Eq,Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThinkingConfig {

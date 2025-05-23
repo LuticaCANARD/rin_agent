@@ -7,6 +7,7 @@ edition = "2021"
 members = [
     "entity",
     "migration",
+    "gemini_live_api",
     ".", # This is the main crate
 ]
 
@@ -22,6 +23,7 @@ rocket = "*"
 sea-orm = { version = "*", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ] }
 # migration = { path = "migration" } # depends on your needs
 entity = { path = "entity" }
+gemini_live_api= { path = "gemini_live_api" }
 dotenv = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-postgres = "*"

@@ -1212,6 +1212,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gemini_live_api"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "lazy_static",
+ "reqwest 0.12.15",
+ "serde",
+ "serde-protobuf",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+]
+
+[[package]]
 name = "generator"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2812,6 +2827,7 @@ dependencies = [
  "dotenv",
  "entity",
  "futures-util",
+ "gemini_live_api",
  "lazy_static",
  "libc",
  "r2d2",
