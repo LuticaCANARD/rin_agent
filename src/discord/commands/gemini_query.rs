@@ -71,6 +71,10 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
     for user_command_res in message_context.command_result.iter() {
         if user_command_res.is_ok() {
             let user_command_res = user_command_res.as_ref().unwrap();
+            if user_command_res.show_user.unwrap_or(false) == false {
+                // 유저에게 보여주지 않는 경우
+                continue;
+            }
             channel_context.send_message(_ctx,
                 CreateMessage::new()
                 .content(user_command_res.result_message.clone())

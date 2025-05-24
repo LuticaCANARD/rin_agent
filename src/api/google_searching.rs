@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 
-#[derive(Debug, Clone,Deserialize)]
+#[derive(Debug, Clone,Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleSearchItem{
     pub kind: Option<String>,

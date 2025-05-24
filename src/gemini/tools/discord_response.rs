@@ -20,6 +20,7 @@ async fn set_alarm(params : HashMap<String,GeminiBotToolInputValue>) -> Result<G
                 "res": format!("답했습니다! : {}", msg),
             }),
             error: None,
+            show_user: Some(false),
         }
     )
     

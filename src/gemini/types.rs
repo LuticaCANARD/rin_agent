@@ -9,6 +9,7 @@ pub struct GeminiActionResult {
     pub result_message: String,
     pub result: serde_json::Value,
     pub error: Option<String>,
+    pub show_user: Option<bool>
 }
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
@@ -113,6 +114,7 @@ impl Default for GeminiBotTools{
                 result_message: "default".to_string(),
                 result: json!({}),
                 error: None,
+                show_user: Some(false)
             }) }),
             result_example: None,
         }

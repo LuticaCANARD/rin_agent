@@ -158,7 +158,8 @@ pub static GEMINI_BOT_TOOLS: LazyLock<hash_map::HashMap<String, GeminiBotTools>>
     load_gemini_tools!(
         set_alarm,
         discord_response,
-        searching
+        searching,
+        web_connect
     )
     .into_iter()
     .map(|tool| (tool.name.clone(), tool))

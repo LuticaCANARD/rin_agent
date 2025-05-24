@@ -107,4 +107,6 @@ async fn make_client() {
 }
 
 #[test]
-fn test_socket_manager() {}
+fn test_socket_manager() {
+    
+}
