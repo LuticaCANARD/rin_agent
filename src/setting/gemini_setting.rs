@@ -135,7 +135,10 @@ pub fn get_gemini_generate_config() -> GeminiGenerationConfig {
         speech_config: None,
         thinking_config: Some(ThinkingConfig{
             include_thoughts: true,
-            thinking_budget: 100,
+            thinking_budget: env::var("GEMINI_THINKING_BUDGET")
+                .ok()
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(100)
         }),
         media_resolution: None,
     }
