@@ -9,7 +9,7 @@ pub struct GeminiActionResult {
     pub result_message: String,
     pub result: serde_json::Value,
     pub error: Option<String>,
-    pub show_user: Option<bool>
+    pub show_user: Option<String>
 }
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
@@ -18,6 +18,7 @@ pub struct GeminiResponse {
     pub finish_reason: String,
     pub command_result: Vec<Result<GeminiActionResult,String>>,
     pub avg_logprobs: f64,
+    pub thoughts: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct GeminiImageInputType {
@@ -114,7 +115,7 @@ impl Default for GeminiBotTools{
                 result_message: "default".to_string(),
                 result: json!({}),
                 error: None,
-                show_user: Some(false)
+                show_user: None
             }) }),
             result_example: None,
         }

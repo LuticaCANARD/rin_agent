@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 
 #[derive(Debug, Clone,Deserialize, Serialize)]
@@ -11,6 +12,7 @@ pub struct GoogleSearchItem{
     pub link: Option<String>,
     pub snippet: Option<String>,
     pub html_title: Option<String>,
+    pub pagemap: Option<Value>
 }
 
 pub async fn google_searching(query: String) -> Result<Vec<GoogleSearchItem>, String> {

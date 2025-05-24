@@ -6,6 +6,7 @@ mod libs;
 mod setting;
 mod utils;
 mod web;
+mod service;
 #[cfg(test)] mod tests;
 use web::server::server::get_rocket;
 use model::db::driver::connect_to_db;

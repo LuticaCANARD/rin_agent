@@ -39,7 +39,7 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
                 "res": message,
             }),
             error: None,
-            show_user: Some(true),
+            show_user: Some(message),
         }
     )
 }

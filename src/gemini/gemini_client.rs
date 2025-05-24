@@ -137,7 +137,7 @@ impl GeminiClientTrait for GeminiClient {
         let mut recent_hash= 0;
         
         let mut res_objected_query = objected_query.clone();
-
+        let mut lastest_parts = Some(parts.clone());
         let mut latest_fn_call_name = latest_response["functionCall"]["name"].as_str();
         while latest_fn_call_name != Some("response_msg") {
             let fn_obj = &latest_response;
@@ -300,7 +300,7 @@ impl GeminiClientTrait for GeminiClient {
             if gemini_response_part.len() == 0 {
                 return Err("No content found in response in array!".to_string());
             }
-
+            lastest_parts = Some(gemini_response_part.clone());
             let content = gemini_response_part.last();
             if content.is_none() {
                 return Err("No content found in response".to_string());
@@ -334,17 +334,32 @@ impl GeminiClientTrait for GeminiClient {
             .to_string();
 
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response - last msg: {}", discord_msg));
-
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > cmd Response - sub_items: {:?}", lastest_parts));
         let finish_reason = first_candidate["finishReason"].as_str().unwrap_or("").to_string();
         
         let avg_logprobs = first_candidate["avgLogprobs"].as_f64().unwrap_or(0.0);
-
+        let mut thoughts= None;
+        
+        if lastest_parts.is_some() {
+            let lastest_parts = lastest_parts.unwrap();
+            if lastest_parts.len() >= 2 {
+                let lastest_parts = lastest_parts;
+                let last_part = lastest_parts[lastest_parts.len() - 2].as_object().unwrap();
+                if let Some(thought) = last_part.get("thought") {
+                    if thought == true {
+                        thoughts = last_part.get("text").unwrap().as_str().map(|s| s.to_string());
+                    }
+                }
+            }
+        }
+        let thoughts = thoughts;
         let gemini_response = GeminiResponse {
             discord_msg,
             sub_items,
             finish_reason,
             avg_logprobs,
             command_result,
+            thoughts,
         };
 
         Ok(gemini_response)

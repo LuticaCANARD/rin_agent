@@ -71,8 +71,8 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
     for user_command_res in message_context.command_result.iter() {
         if user_command_res.is_ok() {
             let user_command_res = user_command_res.as_ref().unwrap();
-            if user_command_res.show_user.unwrap_or(false) == false {
-                // 유저에게 보여주지 않는 경우
+            if user_command_res.show_user.is_none(){
+                LOGGER.log(LogLevel::Debug, "show_user is None in GeminiResponse");
                 continue;
             }
             channel_context.send_message(_ctx,
@@ -80,8 +80,11 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
                 .content(user_command_res.result_message.clone())
                 .embed(CreateEmbed::new()
                     .title("Gemini API")
-                    .description(user_command_res.result_message.to_string())
+                    .description("".to_string() + &user_command_res.show_user.clone().unwrap_or("".to_string()))
                     .color(0x00FF00)
+                    .footer(CreateEmbedFooter::new(
+                        user_command_res.result_message.to_string()
+                    ))
                 )
             ).await.unwrap(); 
         } else {
@@ -90,8 +93,13 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
                 CreateMessage::new()
                 .embed(CreateEmbed::new()
                     .title("Gemini API")
-                    .description(user_command_res.to_string())
+                    .description(
+                        &user_command_res.clone()
+                    )
                     .color(0xFF0000)
+                    .footer(CreateEmbedFooter::new(
+                        user_command_res.to_string()
+                    ))
                 )
             ).await.unwrap();
         }
@@ -107,21 +115,17 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
         let mut response_msg: CreateMessage = CreateMessage::new()
         .content(msg_last);
         if chunk == chuncks.len() - 1 {
-            let sub_items = if message_context.sub_items.is_some() {
-                message_context.sub_items
-                    .clone()
-                    .unwrap()
-                    .join("\n")
-            } else {
-                "".to_string()
-            };
-            
+            let sub_items = message_context.thoughts.clone().unwrap_or("".to_string());
             let strs = if need_mention_first == true && chunk == 0 {  
                 user_mention(&origin_user) + &chuncks.get(chunk).unwrap()
             } else {
                 chuncks.get(chunk).unwrap().clone()
             };
-            let used_model = if use_pro {GEMINI_MODEL_PRO.to_string()} else {GEMINI_MODEL_FLASH.to_string()};
+            let used_model = if use_pro {
+                GEMINI_MODEL_PRO.to_string()
+            } else {
+                GEMINI_MODEL_FLASH.to_string()
+            };
             response_msg = generate_message_block(strs,
                 "Gemini API".to_string(), sub_items,
                 used_model,chunk == chuncks.len() - 1

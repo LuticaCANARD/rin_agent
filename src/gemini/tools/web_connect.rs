@@ -36,7 +36,7 @@ async fn web_connect(params: HashMap<String, GeminiBotToolInputValue>) -> Result
         result_message: "Web page content fetched successfully.".to_string(),
         result: json!({ "html": html_content }),
         error: None,
-        show_user: Some(false)
+        show_user: Some(format!("웹 페이지 '{}'의 HTML 내용을 가져왔습니다.", url)),
     })
 }
 
