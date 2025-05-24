@@ -357,8 +357,13 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         // parent_context에서 ai_context_id 추출
     let ai_context_id = parent_context
         .last()
-        .and_then(|(_, ctx_to_msg)| ctx_to_msg.as_ref().map(|c| c.ai_context))
-        .unwrap() as i64;
+        .and_then(|(_, ctx_to_msg)| ctx_to_msg.as_ref().map(|c| c.ai_context));
+    if ai_context_id.is_none() {
+        LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
+        typing.stop();
+        return;
+    }
+    let ai_context_id = ai_context_id.unwrap() as i64;
 
     // 한 번의 쿼리로 현재 및 부모 컨텍스트 모두 조회
     let context_ids = {
