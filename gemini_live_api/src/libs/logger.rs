@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+#[derive(PartialEq, Eq)]
 pub enum LogLevel {
     Error,
     Warning,

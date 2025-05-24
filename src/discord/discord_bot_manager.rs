@@ -16,6 +16,7 @@ use serenity::model::application::{Command, Interaction};
 use sqlx::types::chrono;
 
 use std::env;
+use std::panic;
 use serenity::model::prelude::*;
 use std::pin::Pin;
 use std::future::Future;
@@ -197,7 +198,18 @@ impl EventHandler for Handler {
                 if content.len() > 0 || cpy_msg.attachments.len() > 0 {
                     // Handle the query here
                     LOGGER.log(LogLevel::Info, &format!("Query found: {:?}", content));
-                    gemini_query::continue_query(&ctx, &msg,&msg.author).await;
+                    // Directly call the async function without catch_unwind
+                    let cq = gemini_query::continue_query(&ctx, &msg, &msg.author).await;
+                    if let Err(err) = cq {
+                        LOGGER.log(LogLevel::Error, &format!("Error processing query: {:?}", err));
+                        msg.channel_id.send_message(ctx, 
+                            CreateMessage::new().embed(
+                                make_message_embed("Error", "An error occurred while processing your query. Please try again later.")
+                                .color(0xFF0000)
+                                .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+                            )                         
+                        ).await.unwrap();
+                    }
                 }
             }
         }
@@ -216,7 +228,7 @@ impl EventHandler for Handler {
                 if let Err(err) = command_future(command_name.clone(), &ctx, &command).await {
                     LOGGER.log(LogLevel::Error, &format!("Discord > Error executing command {}: {:?}", command_name, err));
                     if matches!(err, serenity::Error::Other("Gemini API Error")) {
-
+                        LOGGER.log(LogLevel::Error,  err.to_string().as_str());
                         command.channel_id.send_message(ctx, 
                             CreateMessage::new().embed(
                                 make_message_embed("Gemini API Error", "Gemini API Error - Please contact the administrator: @lutica_canard")
@@ -226,7 +238,8 @@ impl EventHandler for Handler {
                                 .color(0xFF0000)
                             )                         
                         ).await.unwrap();
-                    } else if matches!(err,  serenity::Error::Other(DISCORD_DB_ERROR)) {
+                    } else if matches!(err, serenity::Error::Other(DISCORD_DB_ERROR)) {
+                        LOGGER.log(LogLevel::Error, err.to_string().as_str());
                         command.channel_id.send_message(ctx, 
                             CreateMessage::new().embed(
                                 make_message_embed("DB Error", "DB Error - Please contact the administrator: @lutica_canard")
@@ -236,12 +249,14 @@ impl EventHandler for Handler {
                         ).await.unwrap();
 
                     } else if matches!(err, serenity::Error::Http(_)) {
+                        LOGGER.log(LogLevel::Error,  err.to_string().as_str());
                         command.channel_id.send_message(ctx, 
                             CreateMessage::new().embed(
                                 make_message_embed("HTTP Error", "HTTP Error - Please contact the administrator: @lutica_canard").color(0xFF0000).footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
                             )                         
                         ).await.unwrap();
                     } else {
+                        LOGGER.log(LogLevel::Error,  err.to_string().as_str());
                         command.create_response(ctx, 
                             CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                             .content("General Discord Bot Error")

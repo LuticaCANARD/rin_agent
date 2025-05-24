@@ -310,14 +310,16 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
-    let channel_lock = _ctx.http.get_channel(calling_msg.channel_id).await.unwrap();
+pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> Result<(), String> {
+    let channel_lock = _ctx.http.get_channel(calling_msg.channel_id)
+    .await
+    .unwrap();
     let typing = channel_lock.guild().unwrap().start_typing(&_ctx.http);
     let db = DB_CONNECTION_POOL.get();
     if db.is_none() {
         LOGGER.log(LogLevel::Error, "DB Connection Error");
-        calling_msg.channel_id.say(_ctx, "DB Connection Error").await.unwrap();
-        return;
+        typing.stop();
+        return Err(DISCORD_DB_ERROR.to_string());
     }
     let db = db.unwrap().clone();
     let msg_ref_id = calling_msg.referenced_message.clone().unwrap().id.get() as i64;
@@ -361,7 +363,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     if ai_context_id.is_none() {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
         typing.stop();
-        return;
+        return Err("AI Context가 없습니다.".to_string());
     }
     let ai_context_id = ai_context_id.unwrap() as i64;
 
@@ -396,7 +398,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     if ai_context_info.is_none() {
         LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
         typing.stop();
-        return;
+        return Err("AI Context가 없습니다.".to_string());
     }
     let ai_context_info = ai_context_info.unwrap();
     let mut need_load_context_list = ai_context_info.parent_context.clone();
@@ -605,6 +607,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
         let error_msg = ai_response.unwrap_err();
         let mut response_msg: CreateMessage = CreateMessage::new()
         .content(error_msg);
+        
         if let Some(ref ref_msg) = calling_msg.referenced_message {
             response_msg = response_msg.reference_message(&**ref_msg);
         }
@@ -612,7 +615,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             response_msg
         ).await.unwrap();
         LOGGER.log(LogLevel::Error, "Gemini API Error");
-        return;
+        return Err("Gemini API Error".to_string() );
     }
     let ai_response = ai_response.unwrap();
     let guild_id = calling_msg.guild_id.unwrap().get();
@@ -640,7 +643,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
             if image_inserted.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Image insert failed: {:?}", image_inserted));
                 calling_msg.channel_id.say(_ctx, "이미지 전송에 실패했습니다.").await.unwrap();
-                return;
+                return Err("이미지 전송에 실패했습니다.".to_string());
             }
             image_id = Some(image_inserted.unwrap().image_id);
         }
@@ -742,11 +745,11 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) {
     if transaction_result.is_err() {
         LOGGER.log(LogLevel::Error, &format!("DB Transaction Error: {:?}", transaction_result));
         calling_msg.channel_id.say(_ctx, "DB Transaction Error").await.unwrap();
-        return;
+        return Err("DB Transaction Error".to_string());
     }
     let transaction_result = transaction_result.unwrap();
     LOGGER.log(LogLevel::Debug, &format!("DB Transaction Result: {:?}", transaction_result));
 
-    
+    Ok(())
 
 }

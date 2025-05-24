@@ -1,4 +1,8 @@
 use lazy_static::lazy_static;
+
+use crate::service::discord_error_msg::send_debug_error_log;
+
+#[derive(PartialEq, Eq)]
 pub enum LogLevel {
     Error,
     Warning,
@@ -38,6 +42,10 @@ impl Logger {
 }
 lazy_static! {
     pub static ref LOGGER: Logger = Logger::new(|message, level| {
+        if level == LogLevel::Error {
+            // Spawn the future so it runs in the background
+            tokio::spawn(send_debug_error_log(message.to_string()));
+        }
         println!("[{:?}] {}", level.to_string(), message);
     });
 }
