@@ -189,7 +189,11 @@ fn generate_safety_settings_for_gemini() -> serde_json::Value {
             SafetySetting{
                 category:HarmCategory::HarmCategorySexuallyExplicit,
                 threshold: HarmBlockThreshold::Off
-            }
+            },
+            SafetySetting{
+                category:HarmCategory::HarmCategorySexual,
+                threshold: HarmBlockThreshold::Off
+            },
         ]
     )
 }

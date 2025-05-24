@@ -9,7 +9,7 @@ use serenity::json;
 
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::setting::gemini_setting::{get_begin_query, get_gemini_bot_tools, get_gemini_generate_config, GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
+use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
 use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue};
