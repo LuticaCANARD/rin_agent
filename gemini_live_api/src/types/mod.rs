@@ -46,8 +46,8 @@ pub enum HarmCategory{
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SafetySetting{
-    category: HarmCategory,
-    threshold: HarmBlockThreshold
+    pub category: HarmCategory,
+    pub threshold: HarmBlockThreshold
 }
 
 #[derive(Debug, Clone,Deserialize, Serialize)]

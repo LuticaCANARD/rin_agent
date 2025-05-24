@@ -9,7 +9,7 @@ use serenity::json;
 
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::setting::gemini_setting::{get_begin_query, get_gemini_bot_tools, get_gemini_generate_config, GEMINI_BOT_TOOLS, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO};
+use crate::setting::gemini_setting::{get_begin_query, get_gemini_bot_tools, get_gemini_generate_config, GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
 use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue};
@@ -32,11 +32,12 @@ pub trait GeminiClientTrait {
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ,
             "systemInstruction": generate_gemini_user_chunk(begin_query),
-            "generationConfig": get_gemini_generate_config(),
-            "tools": get_gemini_bot_tools(),
+            "generationConfig": GENERATE_CONF.clone(),
+            "tools": GEMINI_BOT_TOOLS_JSON.clone(),
             "toolConfig":{
                 "functionCallingConfig": {"mode": "ANY"},
-            }
+            },
+            "safetySettings": SAFETY_SETTINGS.clone(),
         })
     }
 }
