@@ -51,7 +51,7 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "time".to_string(),
                 description: "Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
-                input_type: GeminiSchemaType::STRING,
+                input_type: GeminiSchemaType::String,
                 required: true,
                 format: Some(GeminiSchemaFormat::DateTime),
                 //Some("2024-03-21 12:00:00".to_string()),
@@ -65,7 +65,7 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "timezone".to_string(),
                 description: "Set the timezone for the alarm (UTC+9 => +9, UTC-1 = -1)".to_string(),
-                input_type: GeminiSchemaType::INTEGER,
+                input_type: GeminiSchemaType::Integer,
                 required: true,
                 format: Some(GeminiSchemaFormat::Int32),
                 default: None,
@@ -79,7 +79,7 @@ pub fn get_command() -> GeminiBotTools {
             },
             GeminiBotToolInput {
                 name: "message".to_string(),
-                input_type: GeminiSchemaType::STRING,
+                input_type: GeminiSchemaType::String,
                 description: "알람과 함꼐 주인님께 보낼 메시지 혹은, 주인님이 알림에 메모한 사항.".to_string(),
                 required: false,
                 format: None,
@@ -91,7 +91,7 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "repeat".to_string(),
                 description: "반복 주기(cron 표현식)".to_string(),
-                input_type: GeminiSchemaType::STRING,
+                input_type: GeminiSchemaType::String,
                 required: false,
                 format: None,
                 default: None,
@@ -103,7 +103,7 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "end_date".to_string(),
                 description: "종료되는 일자. (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
-                input_type: GeminiSchemaType::STRING,
+                input_type: GeminiSchemaType::String,
                 required: false,
                 format: Some(
                     GeminiSchemaFormat::DateTime

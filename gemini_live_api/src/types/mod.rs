@@ -207,7 +207,7 @@ pub struct GeminiSchema {
 impl Default for GeminiSchema {
     fn default() -> Self {
         GeminiSchema {
-            schema_type: GeminiSchemaType::STRING,
+            schema_type: GeminiSchemaType::String,
             format: None,
             title: None,
             description: None,
@@ -431,7 +431,7 @@ pub struct GeminiGoogleSearchRetrievalOption{
 }
 
 fn get_object_type() -> GeminiSchemaType {
-    GeminiSchemaType::OBJECT
+    GeminiSchemaType::Object
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

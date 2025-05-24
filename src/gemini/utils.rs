@@ -234,27 +234,27 @@ pub fn generate_fns_to_gemini(tool:&GeminiBotTools) -> serde_json::Value {
 
 pub fn translate_to_gemini_param(value: &serde_json::Value) -> GeminiBotToolInputValueType {
     match value {
-        serde_json::Value::String(s) => GeminiBotToolInputValueType::STRING(s.clone()),
+        serde_json::Value::String(s) => GeminiBotToolInputValueType::String(s.clone()),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                GeminiBotToolInputValueType::INTEGER(i as i64)
+                GeminiBotToolInputValueType::Integer(i as i64)
             } else if let Some(f) = n.as_f64() {
-                GeminiBotToolInputValueType::NUMBER(f as f64)
+                GeminiBotToolInputValueType::Number(f as f64)
             } else {
-                GeminiBotToolInputValueType::NULL
+                GeminiBotToolInputValueType::Null
             }
         }
-        serde_json::Value::Bool(b) => GeminiBotToolInputValueType::BOOLEAN(*b),
-        serde_json::Value::Array(arr) => GeminiBotToolInputValueType::ARRAY(
+        serde_json::Value::Bool(b) => GeminiBotToolInputValueType::Boolean(*b),
+        serde_json::Value::Array(arr) => GeminiBotToolInputValueType::Array(
             arr.iter()
                 .map(|v| translate_to_gemini_param(v))
                 .collect(),
         ),
-        serde_json::Value::Object(obj) => GeminiBotToolInputValueType::OBJECT(
+        serde_json::Value::Object(obj) => GeminiBotToolInputValueType::Object(
             obj.iter()
                 .map(|(k, v)| (k.clone(), translate_to_gemini_param(v)))
                 .collect(),
         ),
-        _ => GeminiBotToolInputValueType::NULL,
+        _ => GeminiBotToolInputValueType::Null,
     }
 }

@@ -33,7 +33,7 @@ pub fn get_command() -> GeminiBotTools {
             ("msg".to_string(), GeminiBotToolInput {
                 name: "msg".to_string(),
                 description: "주인님께 답할 메시지".to_string(),
-                input_type: GeminiSchemaType::STRING,
+                input_type: GeminiSchemaType::String,
                 required: true,
                 format: None,
                 default: None,

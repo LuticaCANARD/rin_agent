@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "camelCase")]
 pub enum GeminiSchemaType {
-    STRING,
-    NUMBER,
-    INTEGER,
-    BOOLEAN,
-    ARRAY,
-    OBJECT,
-    NULL
+    String,
+    Number,
+    Integer,
+    Boolean,
+    Array,
+    Object,
+    Null
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "camelCase")]
 pub enum GeminiSchemaFormat {
     Float,
     Double,

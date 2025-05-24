@@ -36,7 +36,7 @@ pub fn get_command() -> GeminiBotTools {
             GeminiBotToolInput {
                 name: "query".to_string(),
                 description: "searching".to_string(),
-                input_type: GeminiSchemaType::STRING,
+                input_type: GeminiSchemaType::String,
                 required: true,
                 format: None,
                 default: None,

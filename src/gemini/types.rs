@@ -36,28 +36,28 @@ pub struct GeminiChatChunk {
 
 #[derive(Debug, Clone)]
 pub enum GeminiBotToolInputValueType {
-    STRING(String),
-    NUMBER(f64),
-    INTEGER(i64),
-    BOOLEAN(bool),
-    ARRAY(Vec<GeminiBotToolInputValueType>),
-    OBJECT(hash_map::HashMap<String, GeminiBotToolInputValueType>), // JSON 객체
-    NULL,
+    String(String),
+    Number(f64),
+    Integer(i64),
+    Boolean(bool),
+    Array(Vec<GeminiBotToolInputValueType>),
+    Object(hash_map::HashMap<String, GeminiBotToolInputValueType>), // JSON 객체
+    Null,
 }
 
 impl GeminiBotToolInputValueType {
     pub fn to_string(&self) -> String {
         match self {
-            GeminiBotToolInputValueType::STRING(s) => s.clone(),
-            GeminiBotToolInputValueType::NUMBER(n) => n.to_string(),
-            GeminiBotToolInputValueType::INTEGER(n) => n.to_string(),
-            GeminiBotToolInputValueType::BOOLEAN(b) => b.to_string(),
-            GeminiBotToolInputValueType::ARRAY(arr) => format!("{:?}", arr),
-            GeminiBotToolInputValueType::OBJECT(obj) => obj.iter()
+            GeminiBotToolInputValueType::String(s) => s.clone(),
+            GeminiBotToolInputValueType::Number(n) => n.to_string(),
+            GeminiBotToolInputValueType::Integer(n) => n.to_string(),
+            GeminiBotToolInputValueType::Boolean(b) => b.to_string(),
+            GeminiBotToolInputValueType::Array(arr) => format!("{:?}", arr),
+            GeminiBotToolInputValueType::Object(obj) => obj.iter()
                 .map(|(k, v)| format!("{}: {}", k, v.to_string()))
                 .collect::<Vec<_>>()
                 .join(", ").to_string(),
-            GeminiBotToolInputValueType::NULL => "null".to_string(),
+            GeminiBotToolInputValueType::Null => "null".to_string(),
         }
     }
 }
