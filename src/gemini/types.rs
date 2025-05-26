@@ -34,6 +34,8 @@ pub struct GeminiChatChunk {
     pub is_bot: bool,
     pub timestamp: String,
     pub user_id: Option<String>, 
+    pub guild_id: Option<u64>,
+    pub channel_id: Option<u64>,
 }
 
 #[derive(Debug, Clone)]

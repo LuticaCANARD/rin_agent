@@ -1,4 +1,7 @@
+use gemini_live_api::libs::logger::LOGGER;
 use gemini_live_api::types::enums::GeminiSchemaType;
+use rocket::time::OffsetDateTime;
+use sea_orm::prelude::TimeDateTime;
 use sea_orm::sea_query::time_format;
 use serde_json::{json, Value};
 
@@ -12,6 +15,7 @@ use std::future::Future;
 use sqlx::types::time;
 use gemini_live_api::types::enums::GeminiSchemaFormat;
 use time_macros::format_description; 
+use time::PrimitiveDateTime;
 
 async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<GeminiActionResult, String> {
     let time = params.get("time");
@@ -19,6 +23,7 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         return Err("Missing 'time' parameter".to_string());
     }
     let time = time.unwrap().value.to_string();
+    
     // Here you would implement the logic to set the alarm
 
     let message = params.get("message");
@@ -35,19 +40,39 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         format!("Repeat: {}", repeat.unwrap().value.to_string())
     };
     let set_message = format!("{} - {}", set_message, repeat_set);
+    let time_spl = time.split_at(time.len() - 6);
+    let mut time_spl_iter = time_spl.0.split('.');
+    let first_part: &str = time_spl_iter.next().unwrap_or("");
+    let second_part = time_spl_iter.next().unwrap_or("");
+    let mut second_time_iter = second_part.split(' ');
+    let second_time_first = second_time_iter.next().unwrap_or("");
+    let second_time_pp = format!("{:6}", second_time_first);
+    // let time_zone = 
 
+    let time = format!("{}.{} {}", first_part, second_time_pp, time_spl.1);
     let date_format = time_format::FORMAT_DATETIME_TZ;
     
+    LOGGER.log(gemini_live_api::libs::logger::LogLevel::Debug, &format!("Setting alarm with params: {:?}", time));
     let start = time::PrimitiveDateTime::parse(
         &time, 
         date_format)
-        .map_err(|_| "Invalid time format".to_string())?;
-    let end_str = params.get("end_date")
-        .map_or_else(|| "".to_string(), |v| v.value.to_string());
-    let end = time::PrimitiveDateTime::parse(
-        &end_str,
-        date_format
-    );
+        .map_err(|_| "Invalid Start datetime format".to_string())?;
+
+
+    let end_str = params.get("end_date");
+    
+    let end = if end_str.is_none() {
+        Ok(start)
+    } else {
+        let end_str = end_str.unwrap().value.to_string();
+        time::PrimitiveDateTime::parse(
+            &end_str,
+            date_format
+        )
+    };
+
+    LOGGER.log(gemini_live_api::libs::logger::LogLevel::Debug, &format!("Parsed start time: {:?}", start));
+
     let timezone = params.get("timezone")
         .map_or("UTC".to_string(), |v| v.value.to_string());
 
@@ -82,7 +107,10 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         Err(_) => start, // Default to max if no end date is provided
     };
     let alarm_item = ScheduleRequest{start, end, timezone, name, description, repeat};
-    RIN_SERVICES.call::<ScheduleService>()
+    RIN_SERVICES
+        .get()
+        .unwrap()
+        .call::<ScheduleService>()
         .unwrap()
         .lock()
         .await
@@ -108,14 +136,13 @@ pub fn get_command() -> GeminiBotTools {
         parameters: vec![
             GeminiBotToolInput {
                 name: "time".to_string(),
-                description: "Set the time for the alarm (Format is YYYY-MM-DD HH:MM:SS)".to_string(),
+                description: format!("Set the time for the alarm (Format is {})", "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:6] [offset_hour sign:mandatory]:[offset_minute]").to_string(),
                 input_type: GeminiSchemaType::String,
                 required: true,
                 format: Some(GeminiSchemaFormat::DateTime),
-                //Some("2024-03-21 12:00:00".to_string()),
                 default: None,
                 enum_values: None,
-                example: None,
+                example: Some(sea_orm::JsonValue::String("2024-03-21 12:00:00.000000+09:00".to_string())),
                 pattern: None
                 //Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
 
@@ -133,7 +160,32 @@ pub fn get_command() -> GeminiBotTools {
                 ),
                 pattern: None,
                 //Some("^[+-][0-9]{1,2}$".to_string()),
-
+            },
+            GeminiBotToolInput{
+                name: "callguild".to_string(),
+                input_type: GeminiSchemaType::Integer,
+                description: "알람을 보낼 길드 ID".to_string(),
+                required: false,
+                format: Some(GeminiSchemaFormat::Int64),
+                default: None,
+                enum_values: None,
+                example: Some(
+                    json!("123456789012345678".to_string())
+                ),
+                pattern: None,
+            },
+            GeminiBotToolInput{
+                name: "callchannel".to_string(),
+                input_type: GeminiSchemaType::Integer,
+                description: "알람을 보낼 채널 ID".to_string(),
+                required: false,
+                format: Some(GeminiSchemaFormat::Int64),
+                default: None,
+                enum_values: None,
+                example: Some(
+                    json!("123456789012345678".to_string())
+                ),
+                pattern: None,
             },
             GeminiBotToolInput {
                 name: "message".to_string(),
@@ -200,7 +252,8 @@ pub fn get_command() -> GeminiBotTools {
         result_example: Some(serde_json::json!({
             "result_message": "Alarm set for 2024-03-21 12:00:00 with message: Hello!",
             "result": { "res": "Alarm set for 2024-03-21 12:00:00 with message: Hello!" },
-            "error": null
+            "error": null,
+            "handle": "example_handle",
         })),
     }
 }

@@ -11,10 +11,16 @@ use super::types::{ GeminiBotToolInputValueType, GeminiBotTools, GeminiChatChunk
 
 fn generate_gemini_string_from_chunk(chunk: &GeminiChatChunk) -> String {
     format!("
+    guild_id : {}
+    channel_id : {}
     time : {} 
     sender : {}
     message : {}
-    ",&chunk.timestamp,if !chunk.is_bot {chunk.user_id.clone().unwrap()} else {String::from("0")}, chunk.query
+
+    ",
+    &chunk.guild_id.unwrap_or(0),
+    &chunk.channel_id.unwrap_or(0),
+    &chunk.timestamp,if !chunk.is_bot {chunk.user_id.clone().unwrap()} else {String::from("0")}, chunk.query
     ).to_string()
 }
 fn generate_gemini_image_chunk(chunk:Option<GeminiImageInputType>) -> Option<serde_json::Value> {

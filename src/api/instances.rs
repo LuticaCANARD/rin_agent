@@ -2,20 +2,17 @@
 use std::sync::LazyLock;
 
 use rs_ervice::{RSContext, RSContextBuilder};
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::OnceCell};
 
 use super::schedule::ScheduleService;
 
+pub static RIN_SERVICES: OnceCell<RSContext> = OnceCell::const_new();
 
-pub static RIN_SERVICES: LazyLock<RSContext> = LazyLock::new(||
-    // 런타임의 block_on 메소드를 사용하여 async 블록을 실행하고 결과를 기다립니다.
-    Runtime::new()
-    .expect("Failed to create Tokio runtime")
-    .block_on(async {
-      RSContextBuilder::new()
+pub async fn init_rin_services() {
+    let ctx = RSContextBuilder::new()
         .register::<ScheduleService>()
         .build()
         .await
-        .expect("Failed to build RIN services context")
-    })
-);
+        .expect("Failed to build RIN services context");
+    RIN_SERVICES.set(ctx).unwrap_or_else(|_| panic!("RIN_SERVICES already initialized"));
+}

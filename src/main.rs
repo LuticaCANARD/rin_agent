@@ -8,6 +8,8 @@ mod utils;
 mod web;
 mod service;
 #[cfg(test)] mod tests;
+use api::instances::init_rin_services;
+// use api::instances::init_rin_services;
 use web::server::server::get_rocket;
 use model::db::driver::connect_to_db;
 use libs::logger::{self, LOGGER,LogLevel};
@@ -65,6 +67,7 @@ async fn main() {
     #[cfg(target_os = "linux")]
     set_process_name("rin_agent_main_server");
 
+    init_rin_services().await;
     let _ = dotenv::dotenv();
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
     let web_server_thread = tokio::spawn(async move { fn_web_server_thread().await });

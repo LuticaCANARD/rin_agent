@@ -51,6 +51,8 @@ fn context_process(origin:&PastQuery) -> GeminiChatChunk {
         query: origin.0.context.clone(),
         is_bot: origin.0.by_bot,
         timestamp: origin.0.created_at.to_utc().to_string(),
+        guild_id: Some(origin.0.guild_id.try_into().unwrap()),
+        channel_id: Some(origin.0.channel_id.try_into().unwrap()),
         image: if origin.1.is_some() {
             let image = origin.1.clone().unwrap();
             let image = GeminiImageInputType{
@@ -185,6 +187,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         image: None,
                         timestamp: chrono::Utc::now().to_string(),
                         user_id: Some(user_id.to_string()),
+                        guild_id: Some(_options.guild_id.unwrap().get()),
+                        channel_id: Some(_options.channel_id.get()),
                     }
                 ],&get_begin_query(locale,user_id.to_string()),use_pro)
                 .await;
@@ -562,7 +566,9 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         is_bot: false,
         user_id: Some(calling_msg.author.id.get().to_string()),
         timestamp: calling_msg.timestamp.to_string(),
-        image
+        image,
+        guild_id: calling_msg.guild_id.map(|g| g.get()),
+        channel_id: Some(calling_msg.channel_id.get()),
     };
     let _push_query: () = before_messages.push(user_msg_current);
     LOGGER.log(LogLevel::Debug, &format!("Sending Query: {:?}", before_messages));

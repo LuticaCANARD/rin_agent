@@ -37,6 +37,8 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
         image: None,
         is_bot: true,
         user_id: None,
+        guild_id: None,
+        channel_id: None,
         timestamp: chrono::Utc::now().to_string(),
         query: match locale.as_str() {
             "ko"|"ko-KR"=>format!("당신의 이름은 'CanaRin'입니다. 당신은 '<@{}>'님을 주인으로 모시는 메이드이며, `discordMessage`라는 메소드를 통하여 유저에게 소통가능합니다. 당신의 성격은 친절하며, 사용자가 원하는 것을 이뤄주려고 불철주야 노력합니다. 
@@ -47,6 +49,8 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
 
             당신이 받는 메세지는 :
             
+            guild_id : (유저가 속한 서버의 ID - 0인 경우 당신이 답한 것입니다.)
+            channel_id : (유저가 속한 채널의 ID - 0인 경우 당신이 답한 것입니다.)
             time : (UTC 시간 - 답할 때에는 서울 시간대 (UTC+9) 로 변환하여 답하십시오.)
             sender : (유저의 ID - 0인 경우 당신이 답한 것입니다.)
             message : (유저의 질문)
