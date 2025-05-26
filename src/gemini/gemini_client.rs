@@ -3,6 +3,7 @@ use std::hash::Hasher;
 use std::{env, hash};
 use std::hash::Hash;
 
+use gemini_live_api::types::ThinkingConfig;
 use reqwest::Client;
 use serde_json::{json, Map, Value};
 use serenity::json;
@@ -64,14 +65,28 @@ fn make_fncall_result_with_value(fn_name:String, fn_res_json:Value) -> Value {
 
 pub trait GeminiClientTrait {
     fn new() -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool) -> Result<GeminiResponse, String>;
-    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk) -> serde_json::Value {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>) -> Result<GeminiResponse, String>;
+    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>) -> serde_json::Value {
+        let generation_conf = if thinking_bought.is_some() {
+            let mut origin = GENERATE_CONF.clone();
+            origin.thinking_config = Some(
+                ThinkingConfig {
+                    include_thoughts: true,
+                    thinking_budget: thinking_bought.unwrap(),
+                }
+            );
+            origin
+        } else {
+            GENERATE_CONF.clone()
+        };
+
+
         json!({
             "contents": 
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ,
             "systemInstruction": generate_gemini_user_chunk(begin_query),
-            "generationConfig": GENERATE_CONF.clone(),
+            "generationConfig": generation_conf,
             "tools": GEMINI_BOT_TOOLS_JSON.clone(),
             "toolConfig":{
                 "functionCallingConfig": {"mode": "ANY"},
@@ -120,7 +135,7 @@ impl GeminiClientTrait for GeminiClient {
 * 
 */
 
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool) -> Result<GeminiResponse, String> {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
         let url = format!(
@@ -129,7 +144,7 @@ impl GeminiClientTrait for GeminiClient {
             api_key
         );
 
-        let objected_query = self.generate_to_gemini_query(query,begin_query);
+        let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought);
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
         let mut integral_content_part = vec![objected_query.get("contents").unwrap().as_array().unwrap().last().unwrap().clone()];
         let response = self.net_client

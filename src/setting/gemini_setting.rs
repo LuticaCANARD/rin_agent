@@ -205,6 +205,6 @@ pub static GEMINI_BOT_TOOLS_JSON: LazyLock<serde_json::Value> = LazyLock::new(||
 pub static SAFETY_SETTINGS: LazyLock<serde_json::Value> = LazyLock::new(|| {
     generate_safety_settings_for_gemini()
 });
-pub static GENERATE_CONF: LazyLock<serde_json::Value> = LazyLock::new(|| {
-    json!(get_gemini_generate_config())
+pub static GENERATE_CONF: LazyLock<GeminiGenerationConfig> = LazyLock::new(|| {
+    get_gemini_generate_config()
 });

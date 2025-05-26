@@ -11,6 +11,7 @@ pub struct Model {
     pub root_msg: i64,
     pub using_pro_model: bool,
     pub parent_context: Vec<i64>,
+    pub thinking_bought: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

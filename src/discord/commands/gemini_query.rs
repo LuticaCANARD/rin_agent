@@ -160,6 +160,18 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
         _options.create_response(_ctx,CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("질문을 입력하세요"))).await?;
         return Ok("질문을 입력하세요".to_string());
     }
+    let thinking_bought = options.iter().find(|o| o.name == "thinking_bought");
+    let thinking_bought = if thinking_bought.is_some() {
+        let unwarped = thinking_bought.unwrap().value.clone();
+        match unwarped {
+            ResolvedValue::Integer(i) => Some(i as i32),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    
+
     let query = query.unwrap().value.clone();
     match query {
         
@@ -190,7 +202,11 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         guild_id: Some(_options.guild_id.unwrap().get()),
                         channel_id: Some(_options.channel_id.get()),
                     }
-                ],&get_begin_query(locale,user_id.to_string()),use_pro)
+                ],
+                &get_begin_query(locale,user_id.to_string()),
+                use_pro,
+                thinking_bought
+            )
                 .await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
@@ -240,6 +256,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 root_msg: sea_orm::Set(insert_user_and_bot_talk.get(0).unwrap().id),
                 parent_context: sea_orm::Set([].to_vec()),
                 using_pro_model: sea_orm::Set(use_pro),
+                thinking_bought: sea_orm::Set(thinking_bought),
                 ..Default::default()
             })
             .exec_with_returning(&db)
@@ -306,11 +323,21 @@ pub fn register() -> CreateCommand {
                 .required(true)
             )
         .add_option(CreateCommandOption::new(
-            CommandOptionType::Boolean,
-            "use_pro",
-            "Gemini Pro 모델을 사용할지 선택하세요",
+                CommandOptionType::Boolean,
+                "use_pro",
+                "Gemini Pro 모델을 사용할지 선택하세요",
+            )
+            .required(false)
         )
-        .required(false)
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::Integer,
+                "thinking_bought",
+                "Thinking Bought",
+            )
+            .max_int_value(20000)
+            .min_int_value(100)
+            .required(false)
         )
 }
 
@@ -595,15 +622,22 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     .all(&db)
     .await
     .unwrap();
-    let mut continue_context = ai_context_info.id as i64;
+    let continue_context = ai_context_info.id as i64;
     LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
     // 이후의 컨텍스트가 존재하면 true
     let there_is_next_context = after_parent.len() > 0;
+    let thinking_bought = if ai_context_info.thinking_bought.is_some() {
+        Some(ai_context_info.thinking_bought.unwrap())
+    } else {
+        None
+    };
     let ai_response = gemini_client::GeminiClient::new()
     .send_query_to_gemini(
         before_messages,
         &get_begin_query(user_locale.unwrap_or("ko".to_string()),calling_msg.author.id.get().to_string()),
-        context_using_pro)
+        context_using_pro,
+        thinking_bought
+    )
     .await;
 
     
@@ -709,6 +743,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                 root_msg: sea_orm::Set(inserted_context_desc[0].id),
                 parent_context: sea_orm::Set(parent_context_lst),
                 using_pro_model: sea_orm::Set(context_using_pro),
+                thinking_bought: sea_orm::Set(thinking_bought),
                 ..Default::default()})
             .exec_with_returning(txn)
             .await?;
