@@ -279,7 +279,9 @@ impl GeminiClientTrait for GeminiClient {
                             ).await;
                         }
                     } else if let Some(though) = part.get("thought") {
-                        thoughts = though.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
+                        LOGGER.log(LogLevel::Debug, "Gemini API > Thought received");
+                        thoughts = part.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
+                        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Thought: {}", thoughts.as_deref().unwrap_or("No thought")));
                     } else {
                         send_debug_error_log(
                             format!("Gemini API > Unexpected response part: {:?}", part)

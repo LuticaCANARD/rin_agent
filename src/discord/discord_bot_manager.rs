@@ -138,6 +138,18 @@ impl BotManager {
             println!("Client error: {:?}", why);
         }
     }
+
+    pub async fn send_message_for_alarm(&self, channel_id: ChannelId,target_user:UserId, memo: String)->Result<serenity::all::Message, serenity::Error> {
+        channel_id.send_message(&self.client.http, CreateMessage::new()
+            .content(format!("{} \n {}", target_user.mention(), memo))
+            .embed(
+                CreateEmbed::new()
+                    .title("Alarm")
+                    .description(memo)
+                    .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+            )
+        ).await
+    }
 }
 pub struct Handler;
 #[async_trait]

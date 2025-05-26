@@ -45,7 +45,7 @@ async fn searching(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         )
     }
     let google_searching_result = google_searching_result.unwrap();
-    let result_message = format!("Search results for '{}':", query);
+    let result_message = format!("Search google results for '{}':", query);
     Ok(
         GeminiActionResult{
             result_message,

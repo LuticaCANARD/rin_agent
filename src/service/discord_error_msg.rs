@@ -70,6 +70,6 @@ pub async fn send_additional_log(
         .await;
     LOGGER.log(
         LogLevel::Debug,
-        &format!("Sent additional log: {:?}", req)
+        &format!("Sent additional log: {:?}", message)
     );
 }

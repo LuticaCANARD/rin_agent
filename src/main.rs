@@ -16,6 +16,7 @@ use model::db::driver::connect_to_db;
 use libs::logger::{self, LOGGER,LogLevel};
 use tokio::task;
 use tokio::signal;
+use std::fmt::format;
 use std::sync::Arc;
 use tokio::sync::Notify;
 
@@ -34,6 +35,12 @@ async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
     tokio::spawn(async move {
         signal::ctrl_c().await.expect("Failed to listen for SIGINT");
         LOGGER.log(LogLevel::Debug, "SIGINT received, shutting down...");
+        let is_dev = if cfg!(debug_assertions) {
+            "dev"
+        } else {
+            "prod"
+        };
+        send_additional_log(format!("{} > SIGINT received, shutting down...",is_dev).to_string()).await;
         sigint_notify_clone.notify_one();
     });
 
@@ -63,6 +70,8 @@ fn set_process_name(name: &str) {
         libc::prctl(libc::PR_SET_NAME, cname.as_ptr() as usize, 0, 0, 0);
     }
 }
+
+
 #[tokio::main]
 async fn main() {
     #[cfg(target_os = "linux")]
