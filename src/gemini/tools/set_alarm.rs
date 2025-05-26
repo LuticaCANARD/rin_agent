@@ -1,21 +1,16 @@
 use gemini_live_api::libs::logger::LOGGER;
 use gemini_live_api::types::enums::GeminiSchemaType;
-use rocket::time::OffsetDateTime;
-use sea_orm::prelude::TimeDateTime;
+use sea_orm::prelude::DateTime;
 use sea_orm::sea_query::time_format;
 use serde_json::{json, Value};
 
-use crate::api::instances::RIN_SERVICES;
+use crate::api::instances::get_rin_services;
 use crate::api::schedule::{ScheduleRepeatRequest, ScheduleRequest, ScheduleService};
 use crate::gemini::types::{generate_input_to_dict, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotToolInputValueType, GeminiBotTools};
 
 use std::collections::{BTreeMap, HashMap};
-use std::pin::Pin;
-use std::future::Future;
 use sqlx::types::time;
 use gemini_live_api::types::enums::GeminiSchemaFormat;
-use time_macros::format_description; 
-use time::PrimitiveDateTime;
 
 async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<GeminiActionResult, String> {
     let time = params.get("time");
@@ -53,9 +48,9 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
     let date_format = time_format::FORMAT_DATETIME_TZ;
     
     LOGGER.log(gemini_live_api::libs::logger::LogLevel::Debug, &format!("Setting alarm with params: {:?}", time));
-    let start = time::PrimitiveDateTime::parse(
+    let start = DateTime::parse_from_str(
         &time, 
-        date_format)
+        "%Y-%m-%d %H:%M:%S%.f %z")
         .map_err(|_| "Invalid Start datetime format".to_string())?;
 
 
@@ -65,9 +60,9 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         Ok(start)
     } else {
         let end_str = end_str.unwrap().value.to_string();
-        time::PrimitiveDateTime::parse(
+        DateTime::parse_from_str(
             &end_str,
-            date_format
+            "%Y-%m-%d %H:%M:%S%.f %z"
         )
     };
 
@@ -107,9 +102,8 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         Err(_) => start, // Default to max if no end date is provided
     };
     let alarm_item = ScheduleRequest{start, end, timezone, name, description, repeat};
-    RIN_SERVICES
-        .get()
-        .unwrap()
+    get_rin_services()
+        .await
         .call::<ScheduleService>()
         .unwrap()
         .lock()

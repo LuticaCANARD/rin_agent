@@ -39,8 +39,14 @@ pub async fn send_debug_error_log(
 
 
 pub async fn send_additional_log(
-    message: String
+    message: String,
+    color : Option<u32>
 ){
+    let color_ = if color.is_none() {
+        16776960 // Default to yellow if no color is provided
+    } else {
+        color.unwrap()
+    };
     dotenv::dotenv().ok();
     let token = std::env::var("DISCORD_WEBHOOK_TOKEN").unwrap_or_else(|_| "default_token".to_string());
     let is_dev = if cfg!(debug_assertions) {
@@ -57,7 +63,7 @@ pub async fn send_additional_log(
                     {
                         "title": "Rin Agent Additional Log",
                         "description": format!("{}> {}",is_dev,message),
-                        "color": 16776960, // Yellow color
+                        "color": color_, // Yellow color
                         "footer": {
                             "text": "Rin Agent Additional Log"
                         }

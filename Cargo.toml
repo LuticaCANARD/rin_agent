@@ -40,5 +40,5 @@ tokio-tungstenite = { version ="0.26.2", features = ["rustls-tls-webpki-roots"] 
 serde = "1.0.219"
 futures-util = "0.3.31"
 serde-protobuf = "0.8.2"
-rs_ervice = {version = "0.1.2" , features=["tokio"] }
+rs_ervice = {version = "0.1.4" , features=["tokio"] }
 time-macros = "0.2.22"

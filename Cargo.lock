@@ -2966,9 +2966,9 @@ dependencies = [
 
 [[package]]
 name = "rs_ervice"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "610c9bbbec060cca6d76526facccaac22430829729a96a3030ae517d0d4a9ad0"
+checksum = "94e11f750847fee9ef4f59f3dc3a637cf7f9980bd3c208bee992b0000aa5940f"
 dependencies = [
  "rs_ervice_macro_lib",
  "tokio",
@@ -3627,9 +3627,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.5.9"
+version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f5fd57c80058a56cf5c777ab8a126398ece8e442983605d280a44ce79d0edef"
+checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",

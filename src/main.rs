@@ -8,9 +8,7 @@ mod utils;
 mod web;
 mod service;
 #[cfg(test)] mod tests;
-use api::instances::init_rin_services;
 use service::discord_error_msg::send_additional_log;
-// use api::instances::init_rin_services;
 use web::server::server::get_rocket;
 use model::db::driver::connect_to_db;
 use libs::logger::{self, LOGGER,LogLevel};
@@ -40,7 +38,7 @@ async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
         } else {
             "prod"
         };
-        send_additional_log(format!("{} > SIGINT received, shutting down...",is_dev).to_string()).await;
+        send_additional_log(format!("{} > SIGINT received, shutting down...",is_dev).to_string(),None).await;
         sigint_notify_clone.notify_one();
     });
 
@@ -76,8 +74,7 @@ fn set_process_name(name: &str) {
 async fn main() {
     #[cfg(target_os = "linux")]
     set_process_name("rin_agent_main_server");
-    send_additional_log("Rin Agent Main Server started".to_string()).await;
-    init_rin_services().await;
+    send_additional_log("Rin Agent Main Server started".to_string(),None).await;
     let _ = dotenv::dotenv();
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
     let web_server_thread = tokio::spawn(async move { fn_web_server_thread().await });
