@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 
 use crate::api::google_searching::{google_searching, GoogleSearchItem};
 use crate::gemini::types::{generate_input_to_dict, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotTools};
+use crate::service::discord_error_msg::send_debug_error_log;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -32,11 +33,13 @@ async fn searching(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
     let query = query.unwrap().value.to_string();
     let google_searching_result = google_searching(query.clone()).await;
     if google_searching_result.is_err() {
+        let why = google_searching_result.err().unwrap();
+        send_debug_error_log(why.to_string()).await;
         return Ok(
             GeminiActionResult{
                 result_message: "Error occurred while searching".to_string(),
                 result: json!({}),
-                error: Some(google_searching_result.err().unwrap()),
+                error: Some(why.to_string()),
                 show_user: Some("검색 중 오류가 발생했습니다.".to_string()),
             }
         )
