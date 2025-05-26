@@ -263,7 +263,7 @@ impl GeminiClientTrait for GeminiClient {
                                 "Gemini API > Function call without name".to_string()
                             ).await;
                         }
-                    } else if let Some(though) = part.get("thoughts") {
+                    } else if let Some(though) = part.get("thought") {
                         thoughts = though.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
                     } else {
                         send_debug_error_log(
