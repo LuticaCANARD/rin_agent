@@ -4,7 +4,7 @@ use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, Gemi
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,Default)]
 pub struct GeminiActionResult {
     pub result_message: String,
     pub result: serde_json::Value,

@@ -12,6 +12,10 @@ pub struct Model {
     pub using_pro_model: bool,
     pub parent_context: Vec<i64>,
     pub thinking_bought: Option<i32>,
+    #[sea_orm(column_type = "Text", nullable, unique)]
+    pub cache_key: Option<String>,
+    pub cache_created_at: DateTimeWithTimeZone,
+    pub cache_expires_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

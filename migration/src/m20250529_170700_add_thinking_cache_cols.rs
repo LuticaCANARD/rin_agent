@@ -11,23 +11,23 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(TbDiscordAiContext::Table)
-                    .add_column(
+                    .add_column_if_not_exists(
                         ColumnDef::new(TbDiscordAiContext::CacheKey)
                             .text()
                             .unique_key()
                         
                     )
-                    .add_column(
+                    .add_column_if_not_exists(
                         ColumnDef::new(TbDiscordAiContext::CacheCreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::current_timestamp())
                     )
-                    .add_column(
-                        ColumnDef::new(TbDiscordAiContext::CacheTTL)
+                    .add_column_if_not_exists(
+                        ColumnDef::new(TbDiscordAiContext::CacheExpiresAt)
                             .timestamp_with_time_zone()
                             .not_null()
-                            .default(Expr::current_timestamp()) // 7 days
+                            .default(Expr::current_timestamp())
                     )
                     .to_owned()
             )
@@ -38,8 +38,10 @@ impl MigrationTrait for Migration {
         manager.alter_table(
             Table::alter()
                 .table(TbDiscordAiContext::Table)
-                .drop_column(TbDiscordAiContext::ThinkingBought)
+                .drop_column(TbDiscordAiContext::CacheKey)
+                .drop_column(TbDiscordAiContext::CacheCreatedAt)
                 .to_owned(),
+
         ).await
     }
 }
@@ -56,5 +58,4 @@ enum TbDiscordAiContext {
     CacheKey,
     CacheExpiresAt,
     CacheCreatedAt,
-    CacheTTL
 }

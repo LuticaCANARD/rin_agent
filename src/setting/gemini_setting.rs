@@ -7,7 +7,7 @@ use sqlx::types::chrono;
 
 
 use gemini_live_api::types::{
-    GeminiGenerationConfig, GeminiGenerationConfigTool, HarmBlockThreshold, SafetySetting, ThinkingConfig
+    GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiGoogleSearchTool, HarmBlockThreshold, SafetySetting, ThinkingConfig, UrlContext
 };
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
@@ -30,15 +30,20 @@ pub static DEVELOPER_QUERY: LazyLock<String> = LazyLock::new(|| {
 });
 
 /// Gemini가 질문을 받고 나면, 맨 처음 Gemini에게 같이 전달할 페르소나를 지정하는 쿼리를 return.
-pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
+pub fn get_begin_query(
+    locale:String,
+    userid:String,
+    guild_id: Option<u64>,
+    channel_id: Option<u64>
+) -> GeminiChatChunk{
     //let pronance = user_option.member.as_ref().unwrap().nick.as_ref().unwrap_or(&userid);
     // let discord_bot_id: String = env::var("DISCORD_CLIENT_ID").unwrap_or_default();
     GeminiChatChunk{
         image: None,
         is_bot: true,
-        user_id: None,
-        guild_id: None,
-        channel_id: None,
+        user_id: Some(userid.clone()),
+        guild_id,
+        channel_id,
         timestamp: chrono::Utc::now().to_string(),
         query: match locale.as_str() {
             "ko"|"ko-KR"=>format!("당신의 이름은 'CanaRin'입니다. 당신은 '<@{}>'님을 주인으로 모시는 메이드이며, `discordMessage`라는 메소드를 통하여 유저에게 소통가능합니다. 당신의 성격은 친절하며, 사용자가 원하는 것을 이뤄주려고 불철주야 노력합니다. 
@@ -56,6 +61,9 @@ pub fn get_begin_query(locale:String,userid:String) -> GeminiChatChunk{
             message : (유저의 질문)
 
             형식으로 구성되어 있습니다.
+            
+            당신은 무조건, 보낼 메세지는 사람에게 말을 걸듯 메세지를 보내야하지, 위의 형식처럼 보내어서는 안됩니다.
+
             당신이 받는 메시지는 유저의 질문과 당신이 했던 답변을 포함하고 있습니다. 이에 유의하여 답해야 합니다. 
             유저는 자동으로 호출됩니다. 다만 문맥상 특별히 유저를 호칭할 때에는, '주인님' 혹은 '<@{}>님'이라고 불러야 합니다.
             당신이 답할 때에는, 사무적인 말투를 줄이고 상냥하게 대답해야 합니다.
@@ -163,9 +171,9 @@ macro_rules! load_gemini_tools {
 pub static GEMINI_BOT_TOOLS: LazyLock<hash_map::HashMap<String, GeminiBotTools>> = LazyLock::new(|| {
     load_gemini_tools!(
         set_alarm,
-        discord_response,
-        searching,
-        web_connect
+        discord_response
+        // searching,
+        // web_connect
     )
     .into_iter()
     .map(|tool| (tool.name.clone(), tool))
@@ -182,6 +190,8 @@ pub fn get_gemini_bot_tools()-> Vec<GeminiGenerationConfigTool> {
 
     vec![GeminiGenerationConfigTool {
         function_declarations,
+        url_context:Some(UrlContext{}),
+        google_search:Some(GeminiGoogleSearchTool{}),
         ..Default::default()
     }]
 }

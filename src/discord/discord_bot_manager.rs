@@ -1,3 +1,6 @@
+use rs_ervice::RSContext;
+use rs_ervice::RSContextBuilder;
+use rs_ervice::RSContextService;
 use serenity::all::CreateCommand;
 use serenity::all::CreateEmbed;
 use serenity::all::CreateEmbedFooter;
@@ -14,13 +17,21 @@ use serenity::model::gateway::Ready;
 use serenity::model::gateway::GatewayIntents;
 use serenity::model::application::{Command, Interaction};
 use sqlx::types::chrono;
+use tokio::sync::watch::Receiver;
+use std::cell::OnceCell;
 
 use std::env;
 use std::panic;
+use std::sync::OnceLock;
 use serenity::model::prelude::*;
 use std::pin::Pin;
 use std::future::Future;
+use crate::gemini::types::GeminiActionResult;
 use crate::libs::logger::{LOGGER, LogLevel};
+use crate::libs::thread_message::GeminiFunctionAlarm;
+use crate::libs::thread_pipelines::AsyncThreadPipeline;
+use crate::libs::thread_pipelines::GeminiChannelResult;
+use crate::libs::thread_pipelines::GEMINI_FUNCTION_EXECUTION_ALARM;
 use std::sync::LazyLock;
 use tokio::signal;
 
@@ -108,24 +119,65 @@ async fn register_commands(ctx: Context, guild_id: GuildId) {
 }
 pub struct BotManager {
     client: Client,
+    gemini_function_channel: &'static Receiver<GeminiChannelResult>
+}
+static DISCORD_SERVICE: OnceLock<rs_ervice::RSContext> = OnceLock::new();
+
+
+pub async fn get_discord_service() -> &'static RSContext {
+    if let Some(ctx) = DISCORD_SERVICE.get() {
+        ctx
+    } else {
+        let ctx = RSContextBuilder::new()
+            .register::<BotManager>()
+            .await
+            .expect("Failed to register BotManager service")
+            .build()
+            .await
+            .expect("Failed to build RSContext with BotManager service");
+        DISCORD_SERVICE.set(ctx).ok();
+        DISCORD_SERVICE.get().unwrap()
+    }
 }
 
 
-impl BotManager {
+
+impl BotManager{
     pub async fn new() -> Self {
         let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
         let intents = GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::DIRECT_MESSAGES
             | GatewayIntents::MESSAGE_CONTENT;
+        let gemini_function_channel = &GEMINI_FUNCTION_EXECUTION_ALARM.receiver;
+
         Self {
             client: Client::builder(token, intents)
                 .event_handler(Handler)
                 .await
                 .expect("Error creating client"),
+            gemini_function_channel
         }
     }
     pub async fn run(&mut self) {
+        let mut fun_alarm_receiver = self.gemini_function_channel.clone();
+        let client_control = self.client.shard_manager.clone();
 
+        tokio::spawn(async move {
+            loop {
+                match fun_alarm_receiver.changed().await {
+                    Ok(_) => {
+                        
+                        let alarm = fun_alarm_receiver.borrow_and_update();
+                        LOGGER.log(LogLevel::Debug, &format!("Gemini function alarm received. {}",alarm.message_id));
+                        
+                    }
+                    Err(_) => {
+                        LOGGER.log(LogLevel::Error, "Gemini function alarm receiver has been closed.");
+                        break;
+                    }
+                }
+        }});
+        
         tokio::spawn(async move {
             if let Err(err) = signal::ctrl_c().await {
                 LOGGER.log(LogLevel::Error, &format!("Failed to listen for SIGINT: {:?}", err));
@@ -152,6 +204,25 @@ impl BotManager {
     }
 }
 pub struct Handler;
+
+impl RSContextService for BotManager {
+    async fn on_all_services_built(&self, context: &rs_ervice::RSContext) -> rs_ervice::AsyncHooksResult {
+        LOGGER.log(LogLevel::Info, "Discord > BotManager service is built and ready to use.");
+        // Register the bot manager in the RSContext
+        Ok(())
+    }
+    fn on_register_crate_instance() -> impl Future<Output = Self> where Self: Sized {
+        async { BotManager::new().await }
+    }
+    async fn on_service_created(&mut self, builder: &RSContextBuilder) -> rs_ervice::AsyncHooksResult {
+        LOGGER.log(LogLevel::Info, "Discord > BotManager service is created.");
+        // Register the bot manager in the RSContext
+        Ok(())
+    }
+
+
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     //https://github.com/serenity-rs/serenity/blob/current/examples/e14_slash_commands/src/main.rs

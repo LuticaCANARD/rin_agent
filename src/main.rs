@@ -8,6 +8,8 @@ mod utils;
 mod web;
 mod service;
 #[cfg(test)] mod tests;
+use discord::discord_bot_manager::get_discord_service;
+use discord::discord_bot_manager::BotManager;
 use service::discord_error_msg::send_additional_log;
 use web::server::server::get_rocket;
 use model::db::driver::connect_to_db;
@@ -20,10 +22,11 @@ use tokio::sync::Notify;
 
 
 async fn fn_discord_thread() {
-    let mut discord_manager = discord::discord_bot_manager::BotManager::new().await;
+    let discord_manager = get_discord_service().await
+        .call::<BotManager>()
+        .unwrap();
     LOGGER.log(LogLevel::Debug, "Discord > Starting...");
-    discord_manager.run().await;
-
+    discord_manager.lock().await.run().await;
 }
 async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
 

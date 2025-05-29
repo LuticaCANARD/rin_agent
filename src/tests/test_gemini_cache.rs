@@ -18,7 +18,7 @@ async fn test_gemini_cache() {
         timestamp: chrono::Utc::now().to_string(),
         query: test_query.to_string(),
     };
-    let begin_query = get_begin_query("ko".to_string(), "test_user".to_string());
+    let begin_query = get_begin_query("ko".to_string(), "test_user".to_string(), None, None);
     let use_pro = false; // Set to true if you want to use the pro version
     let ttl:f32 = 12.0; // Time to live in seconds\
     let v_q = vec![chunk_for_query];

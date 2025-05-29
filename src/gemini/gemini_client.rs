@@ -12,6 +12,8 @@ use serenity::json;
 
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
+use crate::libs::thread_message::GeminiFunctionAlarm;
+use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
 use crate::service::discord_error_msg::send_debug_error_log;
 use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
@@ -24,7 +26,7 @@ pub struct GeminiCacheInfo {
 }
 
 pub struct GeminiClient {
-    net_client: Client
+    net_client: Client,
 }
 
 fn generate_gemini_error_message(error: &str) -> String {
@@ -97,8 +99,8 @@ pub trait GeminiClientTrait {
     async fn start_gemini_cache(&mut self, query: Vec<GeminiChatChunk>, begin_query: &GeminiChatChunk, use_pro: bool, ttl:f32) -> 
     Result<GeminiCachedContentResponse, String>;
     fn new() -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>) -> Result<GeminiResponse, String>;
-    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>) -> serde_json::Value {
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>,cached:Option<String>) -> Result<GeminiResponse, String>;
+    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,cached:Option<String>) -> Value {
         let generation_conf = if thinking_bought.is_some() {
             let mut origin = GENERATE_CONF.clone();
             origin.thinking_config = Some(
@@ -111,21 +113,18 @@ pub trait GeminiClientTrait {
         } else {
             GENERATE_CONF.clone()
         };
-
-
+        let cached_info = cached;
         json!({
             "contents": 
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ,
-            "systemInstruction": generate_gemini_user_chunk(begin_query),
             "generationConfig": generation_conf,
-            "tools": GEMINI_BOT_TOOLS_JSON.clone(),
-            "toolConfig":{
-                "functionCallingConfig": {"mode": "ANY"},
-            },
             "safetySettings": SAFETY_SETTINGS.clone(),
+            "cachedContent":cached_info
         })
     }
+
+    async fn drop_cache(&mut self, cache_key: &str) -> Result<(), String>;
 }
 impl GeminiClientTrait for GeminiClient {
     fn new() -> Self {
@@ -172,7 +171,8 @@ impl GeminiClientTrait for GeminiClient {
         query: Vec<GeminiChatChunk>,
         begin_query:&GeminiChatChunk,
         use_pro:bool,
-        thinking_bought:Option<i32>
+        thinking_bought:Option<i32>,
+        cached:Option<String>
     ) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
@@ -182,9 +182,16 @@ impl GeminiClientTrait for GeminiClient {
             api_key
         );
 
-        let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought);
+        let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought,cached);
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
-        let mut integral_content_part = vec![objected_query.get("contents").unwrap().as_array().unwrap().last().unwrap().clone()];
+        let mut integral_content_part = vec![];
+        if let Some(contents) = objected_query.get("contents") {
+            if contents.as_array().is_some() {
+                integral_content_part.push(
+                    contents.as_array().unwrap().iter().last().unwrap().clone()
+                )
+            }
+        }
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -203,6 +210,7 @@ impl GeminiClientTrait for GeminiClient {
         let mut finish_reason = String::new();
         let mut sub_items: Option<Vec<String>> = None;
         let mut avg_logprobs = 0.0;
+        let mut trycount = 0;
         let mut thoughts: Option<String> = None;
         let mut hasher = hash::DefaultHasher::new();
         let mut last_hash: u64 = 0;
@@ -210,11 +218,7 @@ impl GeminiClientTrait for GeminiClient {
             response_result.hash(&mut hasher);
             hasher.finish()
         };
-        
-
-
-
-        while response_found == false {
+        while response_found == false && trycount < 10 {
             let now_contents = serde_json::from_str::<Value>(&last_contents)
                 .map_err(|e| generate_gemini_error_message(&format!("Failed to parse response: {}", e)))?;
 
@@ -261,6 +265,7 @@ impl GeminiClientTrait for GeminiClient {
                                         .filter_map(|item| item.as_str().map(|s| s.to_string()))
                                         .collect());
                             } else {
+
                                 let args = fn_call.get("args")
                                     .and_then(|args| args.as_object())
                                     .cloned()
@@ -296,6 +301,14 @@ impl GeminiClientTrait for GeminiClient {
                                         Ok(result) => {
                                             command_result.push(Ok(result.clone()));
                                             integral_content_part.push(make_fncall_result_with_value(fn_name.to_string(), json!(result.result)));
+                                        let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
+                                            GeminiChannelResult{
+                                                message: result.clone(),
+                                                channel_id: begin_query.channel_id.unwrap().to_string(),
+                                                sender: begin_query.user_id.clone().unwrap().clone(),
+                                                guild_id: begin_query.guild_id.unwrap().to_string(),
+                                                message_id: fn_name.to_string(),
+                                            });
                                         },
                                         Err(e) => {
                                             let error_message = e.to_string();
@@ -320,15 +333,34 @@ impl GeminiClientTrait for GeminiClient {
                         LOGGER.log(LogLevel::Debug, "Gemini API > Thought received");
                         thoughts = part.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
                         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Thought: {}", thoughts.as_deref().unwrap_or("No thought")));
+                    } else if let Some(text) = part.get("text") {
+                        LOGGER.log(LogLevel::Debug, "Gemini API > Text received");
+                        let text_content = text.as_str().unwrap_or("");
+                        if !text_content.is_empty() {
+                            integral_content_part.push(json!({
+                                "role": "model",
+                                "parts": [{
+                                    "text": text_content
+                                }]
+                            }));
+                        }
+                        response_found = true;
+                        discord_msg = text_content.to_string();
+                    } else if let Some(image) = part.get("image") {
+                        LOGGER.log(LogLevel::Debug, "Gemini API > Image received");
+                        integral_content_part.push(json!({
+                            "role": "model",
+                            "parts": [{
+                                "image": image
+                            }]
+                        }));
                     } else {
                         send_debug_error_log(
                             format!("Gemini API > Unexpected response part: {:?}", part)
                         ).await;
                     }
                 }
-
-
-
+                trycount += 1;
                 gemini_sending_query["contents"] = json!(integral_content_part);
                 if response_found == false {
                     let response = self.net_client
@@ -341,7 +373,7 @@ impl GeminiClientTrait for GeminiClient {
                     let response_result = response.text().await.unwrap();
                     hasher.write(response_result.as_bytes());
                     let hash_value = hasher.finish();
-                    if hash_value == last_hash {
+                    if hash_value == last_hash && trycount > 10 {
                         send_debug_error_log(
                             format!("Gemini API > No new response received, hash value unchanged: {}", hash_value)
                         ).await;
@@ -401,10 +433,10 @@ impl GeminiClientTrait for GeminiClient {
         match response {
             Ok(resp) => {
                 if !resp.status().is_success() {
-                    let error_message = format!("Gemini API > Error_status: {} / {}", resp.status(), resp.text().await.unwrap_or_else(|_| "No response text".to_string())
-                );
-                    
-
+                    let error_message = format!(
+                        "Gemini API > Error_status: {} / {}", resp.status(), 
+                        resp.text().await.unwrap_or_else(|_| "No response text".to_string())
+                    );
                     send_debug_error_log(error_message.clone()).await;
                     return Err(error_message);
                 }
@@ -425,6 +457,30 @@ impl GeminiClientTrait for GeminiClient {
                 Err(format!("Gemini API > Error: {}", e))
             }
         }
+    }
+    async fn drop_cache(&mut self, cache_key: &str) -> Result<(), String>
+    {
+        let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/{}?key={}",
+            cache_key, api_key
+        );
+        let response = self.net_client
+            .delete(&url)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            let error_message = format!(
+                "Gemini API > Error_status: {} / {}", response.status(), 
+                response.text().await.unwrap_or_else(|_| "No response text".to_string())
+            );
+            send_debug_error_log(error_message.clone()).await;
+            return Err(error_message);
+        }
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Cache dropped: {}", cache_key));
+        Ok(())
     }
 
 }

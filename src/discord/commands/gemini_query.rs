@@ -1,15 +1,18 @@
 use core::hash;
 use std::collections::{hash_map, hash_set, HashMap};
+use std::time::Duration;
+use std::vec;
 
 use base64::Engine;
 use entity::{tb_context_to_msg_id, tb_image_attach_file};
-use sea_orm::prelude::Expr;
-use sea_orm::sea_query::Alias;
+use rocket::time::Date;
+use sea_orm::prelude::{DateTime, Expr};
+use sea_orm::sea_query::{Alias, ExprTrait};
 use sea_orm::{Condition, ConnectionTrait, DbErr, EntityTrait, Insert, InsertResult, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
 use serenity::builder::*;
-use serenity::model::prelude::*;
+use serenity::model::{guild, prelude::*};
 use serenity::prelude::*;
-use sqlx::types::chrono;
+use chrono::{DateTime as ChronoDateTime, Utc, Duration as ChronoDuration};
 use crate::discord::constant::DISCORD_DB_ERROR;
 use crate::gemini::gemini_client::{self, GeminiClientTrait};
 use crate::gemini::types::{GeminiChatChunk, GeminiImageInputType, GeminiResponse};
@@ -190,10 +193,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let str_query = s.to_string();
             let locale =_options.user.locale.clone().unwrap_or("ko".to_string());
             let user_id = _options.user.id.get();
-            let response = 
-            gemini_client::GeminiClient::new()
-                .send_query_to_gemini(vec![
-                    GeminiChatChunk{
+            let start_user_msg = GeminiChatChunk{
                         query: str_query.clone(),
                         is_bot: false,
                         image: None,
@@ -201,12 +201,41 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         user_id: Some(user_id.to_string()),
                         guild_id: Some(_options.guild_id.unwrap().get()),
                         channel_id: Some(_options.channel_id.get()),
-                    }
-                ],
-                &get_begin_query(locale,user_id.to_string()),
+                    };
+            let start_query = get_begin_query(
+                locale.clone(),
+                user_id.to_string(),
+                Some(_options.guild_id.unwrap().get()),
+                Some(_options.channel_id.get())
+            );
+            let mut gemini_client = gemini_client::GeminiClient::new();
+            let gemini_cached_info = gemini_client.start_gemini_cache(vec![
+                start_user_msg.clone()
+                ], &start_query, 
                 use_pro,
-                thinking_bought
-            )
+                600.0).await;
+            if gemini_cached_info.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("Gemini Cache Error: {:?}", gemini_cached_info));
+                _options.create_response(_ctx,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                        .content("Gemini Cache Error")
+                    )
+                ).await?;
+                typing.stop();
+                return Err(SerenityError::Other("Gemini Cache Error"));
+            }
+            let gemini_cached_info = gemini_cached_info.unwrap();
+
+
+            let response = gemini_client
+                .send_query_to_gemini(
+                    vec![],
+                    &start_query,
+                    use_pro,
+                    thinking_bought,
+                    Some(gemini_cached_info.name.clone()),
+                )
                 .await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
@@ -251,12 +280,23 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 .unwrap();
             LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", insert_user_and_bot_talk));
 
+            let ct = ChronoDateTime::parse_from_rfc3339(&gemini_cached_info.create_time)
+                .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()));
+            let cache_created_at = sea_orm::Set(ct);
+            let cache_expires_at = sea_orm::Set(
+                ChronoDateTime::parse_from_rfc3339(&gemini_cached_info.expire_time)
+                    .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()))
+            );
+
             let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
                 guild_id: sea_orm::Set(guild_id as i64),
                 root_msg: sea_orm::Set(insert_user_and_bot_talk.get(0).unwrap().id),
                 parent_context: sea_orm::Set([].to_vec()),
                 using_pro_model: sea_orm::Set(use_pro),
                 thinking_bought: sea_orm::Set(thinking_bought),
+                cache_key: sea_orm::Set(Some(gemini_cached_info.name.clone())),
+                cache_created_at,
+                cache_expires_at,
                 ..Default::default()
             })
             .exec_with_returning(&db)
@@ -497,11 +537,9 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         .rev()
         .fold(Vec::new(), |mut acc, curr| {
             let current_context_id = curr.2.clone().unwrap().ai_context as i64;
-            LOGGER.log(LogLevel::Debug, &format!("curr: {:?},{},{},{:?}", curr,last_node,ai_context_map.contains(&current_context_id),ai_context_map));
             if curr.0.id <= last_node 
             && ai_context_map.contains(&current_context_id)
             && last_context_id == current_context_id {
-                LOGGER.log(LogLevel::Debug, &format!("FILTERED! curr: {:?}", curr));
                 acc.push(curr);
                 if check_node == curr.0.id as i64 { 
                     // 현재 노드가 컨텍스트의 마지막 노드인 경우이다.
@@ -597,7 +635,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         guild_id: calling_msg.guild_id.map(|g| g.get()),
         channel_id: Some(calling_msg.channel_id.get()),
     };
-    let _push_query: () = before_messages.push(user_msg_current);
+    let _push_query: () = before_messages.push(user_msg_current.clone());
     LOGGER.log(LogLevel::Debug, &format!("Sending Query: {:?}", before_messages));
     let after_parent = tb_discord_message_to_at_context::Entity::find()
     .join_as(
@@ -626,17 +664,36 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
     // 이후의 컨텍스트가 존재하면 true
     let there_is_next_context = after_parent.len() > 0;
+    let cache_is_vaild =  !there_is_next_context && ai_context_info.cache_expires_at.to_utc() > (chrono::Utc::now() + ChronoDuration::seconds(2));
+    let cache_key = if cache_is_vaild{
+        ai_context_info.cache_key.clone()
+    } else {
+        None
+    };
     let thinking_bought = if ai_context_info.thinking_bought.is_some() {
         Some(ai_context_info.thinking_bought.unwrap())
     } else {
         None
     };
-    let ai_response = gemini_client::GeminiClient::new()
+    let send_vector = if cache_is_vaild {
+        vec![user_msg_current.clone()]
+    } else {
+        before_messages.clone()
+    };
+    let mut gemini_client = gemini_client::GeminiClient::new();
+    let begin_query = get_begin_query(user_locale.unwrap_or("ko".to_string()),calling_msg.author.id.get().to_string()
+    ,Some(calling_msg.guild_id.unwrap().get()),
+    Some(calling_msg.channel_id.get())
+    );
+
+
+    let ai_response = gemini_client
     .send_query_to_gemini(
-        before_messages,
-        &get_begin_query(user_locale.unwrap_or("ko".to_string()),calling_msg.author.id.get().to_string()),
+        send_vector,
+        &begin_query,
         context_using_pro,
-        thinking_bought
+        thinking_bought,
+        cache_key,
     )
     .await;
 
@@ -659,7 +716,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     }
     let ai_response = ai_response.unwrap();
     let guild_id = calling_msg.guild_id.unwrap().get();
-    let send_msgs:Vec<Message> = send_split_msg(_ctx, 
+    let send_msgs:Vec<Message> = send_split_msg(
+        _ctx, 
         calling_msg.channel_id, 
         calling_msg.author.clone(),
         ai_response.clone(), 
@@ -693,7 +751,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     .transaction(
         move |txn| Box::pin(async move {
         let mut _final_image_id = None;
-        if let Some(image_data) = image_record_for_tx { // image_record was cloned and moved
+        if let Some(image_data) = image_record_for_tx.clone() { // image_record was cloned and moved
             if let Some(file_src) = image_data.file_url {
                 let image_to_insert = entity::tb_image_attach_file::ActiveModel {
                     file_src: sea_orm::Set(file_src),
@@ -731,11 +789,47 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}\nthere_is_next_context: {:?}", inserted_context_desc,there_is_next_context));
         let mut current_context_id_for_relation = continue_context; // Original continue_context before potential update
 
+
         if there_is_next_context {
             // 컨텍스트 분기를 실행해야 함.
             let mut parent_context_lst = ai_context_info.parent_context.clone();
             parent_context_lst.push(ai_context_info.id as i64);
             let parent_context_lst = parent_context_lst;
+            let mut concated_query = before_messages.clone();
+            concated_query.push(GeminiChatChunk{
+                query: calling_msg.content.clone(),
+                is_bot: false,
+                user_id: Some(calling_msg.author.id.get().to_string()),
+                timestamp: calling_msg.timestamp.to_string(),
+                image: image_record_for_tx,
+                guild_id: calling_msg.guild_id.map(|g| g.get()),
+                channel_id: Some(calling_msg.channel_id.get()),
+            });
+            concated_query.push(GeminiChatChunk{
+                query: ai_response.discord_msg.clone(),
+                is_bot: true,
+                user_id: Some(calling_msg.author.id.get().to_string()),
+                timestamp: chrono::Utc::now().to_string(),
+                image: None,
+                guild_id: calling_msg.guild_id.map(|g| g.get()),
+                channel_id: Some(calling_msg.channel_id.get()),
+            });
+            let concated_query = concated_query;
+            let cache_result = gemini_client.       
+                start_gemini_cache(
+                    concated_query, 
+                    &begin_query, 
+                context_using_pro, 
+                600.0)
+                .await;
+            let cache_result = cache_result.unwrap();
+            let ct = ChronoDateTime::parse_from_rfc3339(&cache_result.create_time)
+                .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()));
+            let cache_created_at = sea_orm::Set(ct);
+            let cache_expires_at = sea_orm::Set(
+                ChronoDateTime::parse_from_rfc3339(&cache_result.expire_time)
+                    .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()))
+            );
 
             let new_discord_context = AiContextDiscordEntity::insert(
                 AiContextDiscordModel {
@@ -744,10 +838,62 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                 parent_context: sea_orm::Set(parent_context_lst),
                 using_pro_model: sea_orm::Set(context_using_pro),
                 thinking_bought: sea_orm::Set(thinking_bought),
+                cache_key: sea_orm::Set(Some(cache_result.name.clone())),
+                cache_created_at,
+                cache_expires_at,
                 ..Default::default()})
             .exec_with_returning(txn)
             .await?;
             current_context_id_for_relation = new_discord_context.id as i64;
+        } else { // 새 분기가 아닌 경우, 캐싱만 실행한다.
+            let _dropped = gemini_client
+                .drop_cache(&ai_context_info.cache_key.unwrap().clone())
+                .await;
+            let mut concated_query = before_messages.clone();
+            concated_query.push(GeminiChatChunk{
+                query: ai_response.discord_msg.clone(),
+                is_bot: true,
+                user_id: Some(calling_msg.author.id.get().to_string()),
+                timestamp: chrono::Utc::now().to_string(),
+                image: None,
+                guild_id: calling_msg.guild_id.map(|g| g.get()),
+                channel_id: Some(calling_msg.channel_id.get()),
+            });
+            concated_query.push(GeminiChatChunk{
+                query: calling_msg.content.clone(),
+                is_bot: false,
+                user_id: Some(calling_msg.author.id.get().to_string()),
+                timestamp: calling_msg.timestamp.to_string(),
+                image: image_record_for_tx,
+                guild_id: calling_msg.guild_id.map(|g| g.get()),
+                channel_id: Some(calling_msg.channel_id.get()),
+            });
+            let created_cached = gemini_client.start_gemini_cache(
+                concated_query,
+                &begin_query,
+                context_using_pro,
+                600.0
+            ).await;
+            let created_cached = created_cached.unwrap();
+            let ct = ChronoDateTime::parse_from_rfc3339(&created_cached.create_time)
+                .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()));
+            let cache_created_at = sea_orm::Set(ct);
+            let cache_expires_at = sea_orm::Set(
+                ChronoDateTime::parse_from_rfc3339(&created_cached.expire_time)
+                    .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()))
+            );
+            let update_context = AiContextDiscordEntity::update(
+                AiContextDiscordModel {
+                    id: sea_orm::Set(ai_context_info.id as i64),
+                    cache_key: sea_orm::Set(Some(created_cached.name.clone())),
+                    cache_created_at,
+                    cache_expires_at,
+                    ..Default::default()
+                }
+            )
+            .exec(txn)
+            .await?;
+            LOGGER.log(LogLevel::Debug, &format!("DB Updated Context: {:?}", update_context));
         }
 
     tb_context_to_msg_id::Entity::insert_many(
