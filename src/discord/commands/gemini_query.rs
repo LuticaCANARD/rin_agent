@@ -209,9 +209,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 Some(_options.channel_id.get())
             );
             let mut gemini_client = gemini_client::GeminiClient::new();
-            let gemini_cached_info = gemini_client.start_gemini_cache(vec![
-                start_user_msg.clone()
-                ], &start_query, 
+            let gemini_cached_info = gemini_client.start_gemini_cache(vec![], &start_query, 
                 use_pro,
                 600.0).await;
             if gemini_cached_info.is_err() {
@@ -228,15 +226,18 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             let gemini_cached_info = gemini_cached_info.unwrap();
 
 
-            let response = gemini_client
-                .send_query_to_gemini(
-                    vec![],
-                    &start_query,
-                    use_pro,
-                    thinking_bought,
-                    Some(gemini_cached_info.name.clone()),
-                )
-                .await;
+            let response = 
+                            gemini_client
+                            .send_query_to_gemini(
+                                vec![
+                                    start_user_msg.clone()
+                                ],
+                                &start_query,
+                                use_pro,
+                                thinking_bought,
+                                Some(gemini_cached_info.name.clone()),
+                            )
+                            .await;
             if response.is_err() {
                 LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
                 return Err(SerenityError::Other("Gemini API Error"));

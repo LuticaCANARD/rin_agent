@@ -395,10 +395,15 @@ pub struct GeminiExecutableCodeResult{
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeminiGenerationConfigTool{
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub function_declarations: Option<Vec<GeminiFunctionDeclaration>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub google_search_retrieval: Option<GeminiGoogleSearchRetrieval>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_execution: Option<GeminiCodeExecutionTool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub google_search: Option<GeminiGoogleSearchTool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url_context: Option<UrlContext>, // 구글 검색 도구
 } 
 impl Default for GeminiGenerationConfigTool {
@@ -415,14 +420,14 @@ impl Default for GeminiGenerationConfigTool {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UrlContext;
+pub struct UrlContext{}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GeminiGoogleSearchTool;
+pub struct GeminiGoogleSearchTool{}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GeminiCodeExecutionTool;
+pub struct GeminiCodeExecutionTool{}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

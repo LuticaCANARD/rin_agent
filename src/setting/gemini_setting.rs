@@ -7,7 +7,7 @@ use sqlx::types::chrono;
 
 
 use gemini_live_api::types::{
-    GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiGoogleSearchTool, HarmBlockThreshold, SafetySetting, ThinkingConfig, UrlContext
+    GeminiCodeExecutionTool, GeminiGenerationConfig, GeminiGenerationConfigTool, GeminiGoogleSearchTool, HarmBlockThreshold, SafetySetting, ThinkingConfig, UrlContext
 };
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
@@ -171,9 +171,9 @@ macro_rules! load_gemini_tools {
 pub static GEMINI_BOT_TOOLS: LazyLock<hash_map::HashMap<String, GeminiBotTools>> = LazyLock::new(|| {
     load_gemini_tools!(
         set_alarm,
-        discord_response
-        // searching,
-        // web_connect
+        discord_response,
+        searching,
+        web_connect
     )
     .into_iter()
     .map(|tool| (tool.name.clone(), tool))
@@ -188,12 +188,24 @@ pub fn get_gemini_bot_tools()-> Vec<GeminiGenerationConfigTool> {
         |tool: &&GeminiBotTools| generate_fns_to_gemini(*tool)
     ).collect::<Vec<_>>());
 
-    vec![GeminiGenerationConfigTool {
-        function_declarations,
-        url_context:Some(UrlContext{}),
-        google_search:Some(GeminiGoogleSearchTool{}),
-        ..Default::default()
-    }]
+    vec![
+        GeminiGenerationConfigTool {
+            function_declarations,
+            ..Default::default()
+        },
+        // GeminiGenerationConfigTool {
+        //     url_context:Some(UrlContext{}),
+        //     ..Default::default()
+        // },
+        // GeminiGenerationConfigTool {
+        //     google_search:Some(GeminiGoogleSearchTool{}),
+        //     ..Default::default()
+        // },
+        // GeminiGenerationConfigTool {
+        //     code_execution:Some(GeminiCodeExecutionTool{}),
+        //     ..Default::default()
+        // }
+    ]
 }
 
 use gemini_live_api::types::{HarmCategory};

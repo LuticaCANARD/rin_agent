@@ -45,13 +45,8 @@ async fn make_client() {
         function_declarations:Some( vec![]),
         ..Default::default()
     };
-    let google_search = GeminiGenerationConfigTool{
-        google_search: Some(GeminiGoogleSearchTool),
-        ..Default::default()
-    };
     let tools = Some(vec![
         fun_declare,
-        google_search,
     ]);
     let realtime_input_config = None;
     let session_resumption = None;

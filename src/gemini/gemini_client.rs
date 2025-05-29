@@ -420,10 +420,10 @@ impl GeminiClientTrait for GeminiClient {
         );
 
         let start_cache = generate_gemini_cache_setting(query, begin_query, use_pro, ttl);
-        LOGGER.log(LogLevel::Debug, &format!("Gemini Cache API > Start post Req: {:?}", start_cache));
+
 
         let body = serde_json::to_string(&start_cache).expect("Failed to serialize cache content");
-
+        LOGGER.log(LogLevel::Debug, &format!("Gemini Cache API > Start post Req: {:?}", &body));
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
