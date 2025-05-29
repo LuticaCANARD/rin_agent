@@ -4,7 +4,7 @@ use std::hash::Hasher;
 use std::{env, hash};
 use std::hash::Hash;
 
-use gemini_live_api::types::{GeminiCachedContent, GeminiFunctionCallingConfig, GeminiGenerationConfigTool, GeminiToolConfig, GeminiToolConfigMode, ThinkingConfig};
+use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, GeminiFunctionCallingConfig, GeminiGenerationConfigTool, GeminiToolConfig, GeminiToolConfigMode, ThinkingConfig};
 use reqwest::Client;
 use rocket::time::serde::iso8601::deserialize;
 use serde_json::{json, Map, Value};
@@ -77,7 +77,7 @@ pub fn generate_gemini_cache_setting(
 ) -> GeminiCachedContent {
     GeminiCachedContent {
         contents: query.iter().map(generate_gemini_user_chunk).collect(),
-        system_instructions: Some(generate_gemini_user_chunk(begin_query)),
+        system_instruction: Some(generate_gemini_user_chunk(begin_query)),
         tools: GEMINI_BOT_TOOLS_JSON.clone(),
         tool_config: Some(GeminiToolConfig{
             function_calling_config: Some(
@@ -90,13 +90,12 @@ pub fn generate_gemini_cache_setting(
         ttl : format!("{:.7}s", ttl),
         model: format!("models/{}", if use_pro { GEMINI_MODEL_PRO } else { GEMINI_MODEL_FLASH}).to_string(),
         display_name: None,
-        name: None,
     }
 }
 
 pub trait GeminiClientTrait {
     async fn start_gemini_cache(&mut self, query: Vec<GeminiChatChunk>, begin_query: &GeminiChatChunk, use_pro: bool, ttl:f32) -> 
-    Result<GeminiCachedContent, String>;
+    Result<GeminiCachedContentResponse, String>;
     fn new() -> Self;
     async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>) -> Result<GeminiResponse, String>;
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>) -> serde_json::Value {
@@ -381,7 +380,7 @@ impl GeminiClientTrait for GeminiClient {
         begin_query:&GeminiChatChunk,
         use_pro:bool,
         ttl: f32
-    ) -> Result<GeminiCachedContent, String> {
+    ) -> Result<GeminiCachedContentResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/cachedContents?key={}",
@@ -412,7 +411,7 @@ impl GeminiClientTrait for GeminiClient {
                 let rest_text = resp.text().await.map_err(|e| format!("Failed to read response text: {}", e))?;
 
                 LOGGER.log(LogLevel::Debug, &format!("Gemini API > Resp: {}", rest_text));
-                let response_result = serde_json::from_str::<GeminiCachedContent>(
+                let response_result = serde_json::from_str::<GeminiCachedContentResponse>(
                     rest_text.as_str()
                 ).map_err(|e| format!("Failed to parse response: {}", e))?;
                 LOGGER.log(LogLevel::Debug, &format!("Gemini API > Cache created: {:?}", response_result));

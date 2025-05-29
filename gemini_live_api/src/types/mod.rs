@@ -559,11 +559,39 @@ pub struct GeminiCachedContent{
     pub tools: Vec<GeminiGenerationConfigTool>,
     pub ttl: String, // Time to live in seconds
     pub model: String, // Model name, e.g., "gemini-1.5-flash"
-    pub name: Option<String>, // Optional name for the cached content - 식별자
     pub display_name: Option<String>, // Optional display name for the cached content
-    pub system_instructions: Option<GeminiContents>, // System instructions for the model
+    pub system_instruction: Option<GeminiContents>, // System instructions for the model
     pub tool_config: Option<GeminiToolConfig>, // Tool configuration for the model
 }
+///["Debug"] Gemini API > Resp: {
+//   "name": "cachedContents/bzjcqjn5zf9b8ev2a2ig76ewucihbabkqawxbigw",
+//   "model": "models/gemini-2.5-flash-preview-04-17",
+//   "createTime": "2025-05-29T11:33:29.292302Z",
+//   "updateTime": "2025-05-29T11:33:29.292302Z",
+//   "expireTime": "2025-05-29T11:33:40.809421037Z",
+//   "displayName": "",
+//   "usageMetadata": {
+//     "totalTokenCount": 1170
+//   }
+// }
+#[derive(Debug, Clone, Serialize,Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiCachedContentResponse {
+    pub name :String,
+    pub model: String, // Model name, e.g., "gemini-1.5-flash"
+    pub create_time: String, // Creation time in ISO 8601 format
+    pub update_time: String, // Last update time in ISO 8601 format
+    pub expire_time: String, // Expiration time in ISO 8601 format
+    pub display_name: Option<String>, // Optional display name for the cached content
+    pub usage_metadata: Option<GeminiUsageMetadata>, // Usage metadata for the cached content
+}
+
+#[derive(Debug, Clone, Serialize,Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiUsageMetadata {
+    pub total_token_count: i32, // Total token count used in the cached content
+}
+
 
 #[derive(Debug, Clone, Serialize,Deserialize)]
 #[serde(rename_all = "camelCase")]
