@@ -64,6 +64,7 @@ fn make_fncall_result_with_value(fn_name:String, fn_res_json:Value) -> Value {
 }
 
 pub trait GeminiClientTrait {
+    async fn start_gemini_cache(&mut self, query: Vec<GeminiChatChunk>, begin_query: &GeminiChatChunk, use_pro: bool, thinking_bought: Option<i32>);
     fn new() -> Self;
     async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>) -> Result<GeminiResponse, String>;
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>) -> serde_json::Value {
@@ -135,7 +136,13 @@ impl GeminiClientTrait for GeminiClient {
 * 
 */
 
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>) -> Result<GeminiResponse, String> {
+    async fn send_query_to_gemini(
+        &mut self, 
+        query: Vec<GeminiChatChunk>,
+        begin_query:&GeminiChatChunk,
+        use_pro:bool,
+        thinking_bought:Option<i32>
+    ) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
         let url = format!(
@@ -335,9 +342,42 @@ impl GeminiClientTrait for GeminiClient {
 
         Ok(gemini_response)
     }
+    async fn start_gemini_cache(
+        &mut self, 
+        query: Vec<GeminiChatChunk>,
+        begin_query:&GeminiChatChunk,
+        use_pro:bool,
+        thinking_bought:Option<i32>
+    ){
+        let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH },
+            api_key
+        );
+
+        let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought);
+        LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
+        let response = self.net_client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(objected_query.to_string())
+            .send()
+            .await
+            .map_err(|e| e.to_string());
+        match response {
+            Ok(resp) => {
+                LOGGER.log(LogLevel::Debug, &format!("Gemini API > Resp: {}", resp.text().await.unwrap()));
+            },
+            Err(e) => {
+                LOGGER.log(LogLevel::Error, &format!("Gemini API > Error: {}", e));
+            }
+        }
+    }
 
 }
 
 // pub async fn send_query_to_cached_gemini() -> Result<GeminiResponse, String> {
 
 // } 
+

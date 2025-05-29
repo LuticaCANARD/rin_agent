@@ -2,7 +2,7 @@
 use std::sync::LazyLock;
 
 use rs_ervice::{RSContext, RSContextBuilder};
-use tokio::{runtime::Runtime, sync::OnceCell};
+use tokio::sync::OnceCell;
 
 use super::schedule::ScheduleService;
 
@@ -12,6 +12,7 @@ pub async fn init_rin_services() {
     let ctx = RSContextBuilder::new()
         .register::<ScheduleService>()
         .await
+        .unwrap()
         .build()
         .await
         .expect("Failed to build RIN services context");

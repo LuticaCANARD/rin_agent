@@ -2,6 +2,7 @@ use std::env;
 
 use crate::{gemini::types::{generate_to_schema, GeminiImageInputType}, libs::logger::LOGGER};
 use base64::Engine;
+use gemini_live_api::types::{enums::GeminiContentRole, GeminiContents, GeminiFileData, GeminiInlineBlob, GeminiParts};
 use serde_json::json;
 use reqwest::header::{HeaderName, HeaderValue};
 
@@ -23,46 +24,58 @@ fn generate_gemini_string_from_chunk(chunk: &GeminiChatChunk) -> String {
     &chunk.timestamp,if !chunk.is_bot {chunk.user_id.clone().unwrap()} else {String::from("0")}, chunk.query
     ).to_string()
 }
-fn generate_gemini_image_chunk(chunk:Option<GeminiImageInputType>) -> Option<serde_json::Value> {
+fn generate_gemini_image_chunk(chunk:Option<GeminiImageInputType>) -> Option<GeminiParts> {
     if chunk.is_none() {
         return None;
     }
     let chunk = chunk.unwrap();
     if let Some(base64_image) = chunk.base64_image {
-        Some(json!({
-            "inline_data": {
-                "mime_type": chunk.mime_type,
-                "data": base64_image
-            }
-        }))
+        Some(GeminiParts{
+            inline_data: Some(GeminiInlineBlob{
+                mime_type: chunk.mime_type,
+                data: base64_image,
+            }),
+            ..Default::default()
+        })
     } else if let Some(file_url) = chunk.file_url {
-        Some(json!({
-            "file_data": {
-                "mime_type": chunk.mime_type,
-                "file_uri": file_url
-            }
-        }))
+        Some(GeminiParts{
+            file_data: Some(GeminiFileData{
+                mime_type: Some(chunk.mime_type),
+                file_uri: file_url,
+            }),
+            ..Default::default()
+        }
+        )
     } else {
         None
     }
 }
 
-pub fn generate_gemini_user_chunk(chunk: &GeminiChatChunk)->serde_json::Value {
+pub fn generate_gemini_user_chunk(chunk: &GeminiChatChunk)->GeminiContents {
     // 이미지가 있는 경우에만 진입
     if let Some(image) = generate_gemini_image_chunk(chunk.image.clone()) {
-        json!({
-            "role" : if chunk.is_bot {"model"} else {"user"},
-            "parts": 
-                [
-                    { "text": generate_gemini_string_from_chunk(chunk)},
-                    image
-                ]
-        })
+        GeminiContents{
+            role: if chunk.is_bot {GeminiContentRole::Model} else {GeminiContentRole::User},
+            parts: vec![
+                GeminiParts {
+                    text: Some(generate_gemini_string_from_chunk(chunk)),
+                    inline_data: None,
+                    file_data: None,
+                    ..Default::default()
+                },
+                image
+            ]
+        }
     } else {
-        json!({
-            "role" : if chunk.is_bot {"model"} else {"user"},
-            "parts": [{ "text": generate_gemini_string_from_chunk(chunk) }]
-        })
+        GeminiContents{
+            role: if chunk.is_bot {GeminiContentRole::Model} else {GeminiContentRole::User},
+            parts: vec![GeminiParts {
+                text: Some(generate_gemini_string_from_chunk(chunk)),
+                inline_data: None,
+                file_data: None,
+                ..Default::default()
+            }]
+        }
     }
     
 }

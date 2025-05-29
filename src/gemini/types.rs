@@ -1,7 +1,7 @@
 use std::{collections::{hash_map, BTreeMap}, default, future::Future, pin::Pin};
 
 use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, GeminiSchema};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone)]
@@ -123,6 +123,9 @@ impl Default for GeminiBotTools{
         }
     }
 }
+
+
+
 
 pub fn generate_input_to_dict(input: GeminiBotToolInput) -> (String, GeminiBotToolInput) {
     (input.name.clone(), input)

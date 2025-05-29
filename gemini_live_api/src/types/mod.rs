@@ -526,3 +526,14 @@ pub struct GeminiWebResult{
     pub uri:String,
     pub title:String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CachedContent{
+    pub contents: Vec<GeminiContents>,
+    pub tools: Vec<GeminiGenerationConfigTool>,
+    pub ttl: u64, // Time to live in seconds
+    pub model: String, // Model name, e.g., "gemini-1.5-flash"
+    pub system_instructions: Option<GeminiContents>, // System instructions for the model
+    pub tool_config: Option<GeminiGenerationConfigTool>, // Tool configuration for the model
+}
