@@ -1,6 +1,6 @@
 use std::{collections::{hash_map, BTreeMap}, default, future::Future, pin::Pin};
 
-use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, GeminiSchema};
+use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, GeminiSchema, GeminiSchemaObject};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -105,7 +105,7 @@ pub struct GeminiBotTools {
     pub parameters: GeminiAPIObjectStruct,    
     pub action: fn(hash_map::HashMap<String, GeminiBotToolInputValue>) 
         -> Pin<Box<dyn Future<Output = Result<GeminiActionResult,String>> + Send>>,
-    pub result_example: Option<Value>,
+    pub response :  Option<GeminiSchema>
 }
 impl Default for GeminiBotTools{
     fn default() -> Self {
@@ -119,7 +119,7 @@ impl Default for GeminiBotTools{
                 error: None,
                 show_user: None
             }) }),
-            result_example: None,
+            response: None    
         }
     }
 }

@@ -7,7 +7,7 @@ use sqlx::types::chrono;
 
 
 use gemini_live_api::types::{
-    GeminiGenerationConfig, HarmBlockThreshold, SafetySetting, ThinkingConfig
+    GeminiGenerationConfig, GeminiGenerationConfigTool, HarmBlockThreshold, SafetySetting, ThinkingConfig
 };
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
@@ -175,14 +175,15 @@ pub static GEMINI_BOT_TOOLS: LazyLock<hash_map::HashMap<String, GeminiBotTools>>
 pub static GEMINI_BOT_TOOLS_MODULES: LazyLock<Vec<&'static GeminiBotTools>> = LazyLock::new(|| {
     GEMINI_BOT_TOOLS.values().collect()
 });
-pub fn get_gemini_bot_tools()-> serde_json::Value {
-    let tools = GEMINI_BOT_TOOLS_MODULES.iter().map(
+pub fn get_gemini_bot_tools()-> Vec<GeminiGenerationConfigTool> {
+    let function_declarations = Some(GEMINI_BOT_TOOLS_MODULES.iter().map(
         |tool: &&GeminiBotTools| generate_fns_to_gemini(*tool)
-    ).collect::<Vec<_>>();
+    ).collect::<Vec<_>>());
 
-    json!({
-        "functionDeclarations":tools,
-    })
+    vec![GeminiGenerationConfigTool {
+        function_declarations,
+        ..Default::default()
+    }]
 }
 
 use gemini_live_api::types::{HarmCategory};
@@ -199,7 +200,7 @@ fn generate_safety_settings_for_gemini() -> serde_json::Value {
 }
 
 
-pub static GEMINI_BOT_TOOLS_JSON: LazyLock<serde_json::Value> = LazyLock::new(|| {
+pub static GEMINI_BOT_TOOLS_JSON: LazyLock<Vec<GeminiGenerationConfigTool>> = LazyLock::new(|| {
     get_gemini_bot_tools()
 });
 pub static SAFETY_SETTINGS: LazyLock<serde_json::Value> = LazyLock::new(|| {

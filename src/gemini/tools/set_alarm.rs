@@ -1,5 +1,6 @@
 use gemini_live_api::libs::logger::LOGGER;
 use gemini_live_api::types::enums::GeminiSchemaType;
+use gemini_live_api::types::GeminiSchema;
 use sea_orm::prelude::DateTime;
 use sea_orm::sea_query::time_format;
 use serde_json::{json, Value};
@@ -243,11 +244,64 @@ pub fn get_command() -> GeminiBotTools {
 
         ].into_iter().map(generate_input_to_dict).collect(),
         action: |params| Box::pin(async move { set_alarm(params).await }),
-        result_example: Some(serde_json::json!({
-            "result_message": "Alarm set for 2024-03-21 12:00:00 with message: Hello!",
-            "result": { "res": "Alarm set for 2024-03-21 12:00:00 with message: Hello!" },
-            "error": null,
-            "handle": "example_handle",
-        })),
+        response: Some(GeminiSchema{
+        schema_type: GeminiSchemaType::Object,
+        title: Some("Set Alarm Response Schema".to_string()),
+        description: Some("Schema for the set alarm tool response".to_string()),
+        properties: Some(
+            BTreeMap::from([
+                ("result_message".to_string(), GeminiSchema {
+                    schema_type: GeminiSchemaType::String,
+                    description: Some("The message that was sent in response".to_string()),
+                    format: None,
+                    default: None,
+                    enum_values: None,
+                    example: Some(json!("Alarm set for 2024-03-21 12:00:00 with message: Hello!".to_string())),
+                    pattern: None,
+                    ..Default::default()
+                }),
+                ("result".to_string(), GeminiSchema {
+                    description: Some("The result of the action".to_string()),
+                    schema_type: GeminiSchemaType::Object,
+                    required: vec!["res".to_string()].into(),
+                    default: None,
+                    enum_values: None,
+                    example: Some(json!({"res": "Alarm set for 2024-03-21 12:00:00 with message: Hello!"})),
+                    pattern: None,
+                    properties: Some(BTreeMap::from([
+                        ("res".to_string(), GeminiSchema {
+                            schema_type: GeminiSchemaType::String,
+                            description: Some("The response message".to_string()),
+                            format: None,
+                            default: None,
+                            enum_values: None,
+                            example: Some(json!("Alarm set for 2024-03-21 12:00:00 with message: Hello!".to_string())),
+                            pattern: None,
+                            ..Default::default()
+                        }),
+                    ])),
+                    title: Some("result".to_string()),
+                    ..Default::default()
+                }),
+                ("error".to_string(), GeminiSchema {
+                    schema_type: GeminiSchemaType::String,
+                    description: Some("Error message if any occurred during the action".to_string()),
+                    format: None,
+                    default: None,
+                    enum_values: None,
+                    example: Some(json!(null)),
+                    pattern: None,
+                    title: Some("error".to_string()),
+                    ..Default::default()
+                }),
+            ])
+        ),
+        required: vec!["result_message".to_string(), "result".to_string()].into(),
+        default: None,
+        enum_values: None,
+        
+            ..Default::default()
+        }) 
+        ,
     }
 }

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::LazyLock};
+use std::{collections::{BTreeMap, HashMap}, sync::LazyLock};
 
-use gemini_live_api::types::enums::{GeminiSchemaFormat, GeminiSchemaType};
+use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, GeminiSchema};
 use serde_json::{json, Value};
 
 use crate::gemini::types::{generate_input_to_dict, generate_to_schema, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotTools};
@@ -63,7 +63,25 @@ pub fn get_command()-> GeminiBotTools {
         .into_iter()
         .map(generate_input_to_dict)
         .collect(),
+        response: Some(GeminiSchema {
+            schema_type: GeminiSchemaType::Object,
+            title: Some("Web Connect Schema".to_string()),
+            description: Some("Schema for the web connect tool".to_string()),
+            properties: Some(BTreeMap::from([
+                ("html".to_string(), generate_to_schema(&GeminiBotToolInput {
+                    name: "html".to_string(),
+                    description: "HTML content of the web page".to_string(),
+                    input_type: GeminiSchemaType::String,
+                    required: true,
+                    format: None,
+                    default: None,
+                    enum_values: None,
+                    example: Some(json!("<html><body><h1>Example</h1></body></html>")),
+                    pattern: None,
+                })),
+            ])),
+            ..Default::default()
+        }),
         action: |params| Box::pin(async move { web_connect(params).await }),
-        result_example: EXAMPLE_RESULT.clone(),
     }
 }

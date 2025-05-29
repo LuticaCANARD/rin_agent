@@ -1,11 +1,12 @@
 use gemini_live_api::types::enums::GeminiSchemaType;
+use gemini_live_api::types::GeminiSchema;
 use serde_json::{json, Value};
 
 use crate::api::google_searching::{google_searching, GoogleSearchItem};
 use crate::gemini::types::{generate_input_to_dict, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotTools};
 use crate::service::discord_error_msg::send_debug_error_log;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::LazyLock;
 
 fn example_result() -> Option<Value> {
@@ -76,7 +77,34 @@ pub fn get_command() -> GeminiBotTools {
         .into_iter()
         .map(generate_input_to_dict)
         .collect(),
+        response: Some(GeminiSchema {
+            schema_type: GeminiSchemaType::Array,
+            title: Some("Google Search Results".to_string()),
+            description: Some("A list of search results from Google.".to_string()),
+            items: Some(Box::new(GeminiSchema {
+                schema_type: GeminiSchemaType::Object,
+                properties: Some(BTreeMap::from([
+                    ("title".to_string(), GeminiSchema {
+                        schema_type: GeminiSchemaType::String,
+                        description: Some("The title of the search result.".to_string()),
+                        ..Default::default()
+                    }),
+                    ("link".to_string(), GeminiSchema {
+                        schema_type: GeminiSchemaType::String,
+                        description: Some("The URL of the search result.".to_string()),
+                        ..Default::default()
+                    }),
+                    ("snippet".to_string(), GeminiSchema {
+                        schema_type: GeminiSchemaType::String,
+                        description: Some("A brief snippet from the search result.".to_string()),
+                        ..Default::default()
+                    }),
+                ])),
+                ..Default::default()
+            })),
+            example: EXAMPLE_RESULT.clone(),
+            ..Default::default()
+        }),
         action: |params| Box::pin(async move { searching(params).await }),
-        result_example: EXAMPLE_RESULT.clone()
     }
 }

@@ -399,6 +399,7 @@ pub struct GeminiGenerationConfigTool{
     pub google_search_retrieval: Option<GeminiGoogleSearchRetrieval>,
     pub code_execution: Option<GeminiCodeExecutionTool>,
     pub google_search: Option<GeminiGoogleSearchTool>,
+    pub url_context: Option<UrlContext>, // 구글 검색 도구
 } 
 impl Default for GeminiGenerationConfigTool {
     fn default() -> Self {
@@ -407,9 +408,15 @@ impl Default for GeminiGenerationConfigTool {
             google_search_retrieval: None,
             code_execution: None,
             google_search: None,
+            url_context: None,
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UrlContext;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeminiGoogleSearchTool;
@@ -437,7 +444,7 @@ fn get_object_type() -> GeminiSchemaType {
 #[serde(rename_all = "camelCase")]
 pub struct GeminiSchemaObject{
     #[serde(rename="type",default="get_object_type")]
-    schema_type: GeminiSchemaType,
+    pub schema_type: GeminiSchemaType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -459,6 +466,24 @@ pub struct GeminiSchemaObject{
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<Box<GeminiSchemaObject>>,
 }
+impl Default for GeminiSchemaObject {
+    fn default() -> Self {
+        GeminiSchemaObject {
+            schema_type: GeminiSchemaType::Object,
+            title: None,
+            description: None,
+            nullable: None,
+            properties: BTreeMap::new(),
+            required: Vec::new(),
+            min_properties: None,
+            max_properties: None,
+            example: None,
+            any_of: None,
+            property_ordering: None,
+            default: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -468,7 +493,7 @@ pub struct GeminiFunctionDeclaration{
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<GeminiSchemaObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<GeminiSchemaObject>,
+    pub response: Option<GeminiSchema>,
 }
 
 
@@ -527,13 +552,39 @@ pub struct GeminiWebResult{
     pub title:String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize,Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CachedContent{
+pub struct GeminiCachedContent{
     pub contents: Vec<GeminiContents>,
     pub tools: Vec<GeminiGenerationConfigTool>,
-    pub ttl: u64, // Time to live in seconds
+    pub ttl: String, // Time to live in seconds
     pub model: String, // Model name, e.g., "gemini-1.5-flash"
+    pub name: Option<String>, // Optional name for the cached content - 식별자
+    pub display_name: Option<String>, // Optional display name for the cached content
     pub system_instructions: Option<GeminiContents>, // System instructions for the model
-    pub tool_config: Option<GeminiGenerationConfigTool>, // Tool configuration for the model
+    pub tool_config: Option<GeminiToolConfig>, // Tool configuration for the model
+}
+
+#[derive(Debug, Clone, Serialize,Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiToolConfig {
+    pub function_calling_config: Option<GeminiFunctionCallingConfig>,
+}
+#[derive(Debug, Clone, Serialize,Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeminiFunctionCallingConfig{
+    pub mode: Option<GeminiToolConfigMode>,
+    pub allowed_function_names: Option<Vec<String>>,
+}
+#[derive(Debug, Clone, Serialize,Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GeminiToolConfigMode {
+    #[serde(rename = "AUTO")]
+    Auto,
+    #[serde(rename = "ANY")]
+    Any,
+    #[serde(rename = "VALIDATED")]
+    Validated,
+    #[serde(rename = "NONE")]
+    None,
 }

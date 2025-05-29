@@ -1,8 +1,8 @@
-use std::env;
+use std::{collections::BTreeMap, env};
 
 use crate::{gemini::types::{generate_to_schema, GeminiImageInputType}, libs::logger::LOGGER};
 use base64::Engine;
-use gemini_live_api::types::{enums::GeminiContentRole, GeminiContents, GeminiFileData, GeminiInlineBlob, GeminiParts};
+use gemini_live_api::types::{enums::{GeminiContentRole, GeminiSchemaType}, GeminiContents, GeminiFileData, GeminiFunctionDeclaration, GeminiInlineBlob, GeminiParts, GeminiSchemaObject};
 use serde_json::json;
 use reqwest::header::{HeaderName, HeaderValue};
 
@@ -221,8 +221,8 @@ pub async fn upload_image_to_gemini(image: GeminiImageInputType,display_name:Str
     })
 }
 
-pub fn generate_fns_to_gemini(tool:&GeminiBotTools) -> serde_json::Value {
-    let mut properties = serde_json::Map::new();
+pub fn generate_fns_to_gemini(tool:&GeminiBotTools) -> GeminiFunctionDeclaration {
+    let mut properties = BTreeMap::new();
     let mut required_param = Vec::new();
 
     let keys = tool.parameters.keys();
@@ -230,25 +230,30 @@ pub fn generate_fns_to_gemini(tool:&GeminiBotTools) -> serde_json::Value {
         let param = tool.parameters.get(parameter_key).unwrap();
 
         properties.insert(
-            parameter_key.to_string(), 
-            json!(generate_to_schema(&param))
+            parameter_key.to_string(),
+            generate_to_schema(&param)
         );
-
         if param.required {
             required_param.push(param.name.clone());
         }
     }
+    let parameters = Some(GeminiSchemaObject {
+        title: Some(tool.name.clone()),
+        properties,
+        required: required_param.clone(),
+        description: Some(tool.description.clone()),
+        default: None,
+        example: None,
+        ..Default::default()
+    });
 
 
-    json!({
-        "name": tool.name,
-        "description": tool.description,
-        "parameters": {
-            "type": "object",
-            "properties": properties,
-            "required": required_param,
-        }
-    })
+    GeminiFunctionDeclaration{
+        name: tool.name.clone(),
+        description: tool.description.clone(),
+        parameters,
+        response : tool.response.clone(), 
+    }
 } 
 
 pub fn translate_to_gemini_param(value: &serde_json::Value) -> GeminiBotToolInputValueType {
