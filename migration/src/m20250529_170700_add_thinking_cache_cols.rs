@@ -13,9 +13,9 @@ impl MigrationTrait for Migration {
                     .table(TbDiscordAiContext::Table)
                     .add_column(
                         ColumnDef::new(TbDiscordAiContext::CacheKey)
-                            .string()
-                            .not_null()
+                            .text()
                             .unique_key()
+                        
                     )
                     .add_column(
                         ColumnDef::new(TbDiscordAiContext::CacheCreatedAt)
@@ -25,10 +25,9 @@ impl MigrationTrait for Migration {
                     )
                     .add_column(
                         ColumnDef::new(TbDiscordAiContext::CacheTTL)
-                            .integer()
+                            .timestamp_with_time_zone()
                             .not_null()
-                            .default(3600)
-                            .comment("seconds")
+                            .default(Expr::current_timestamp()) // 7 days
                     )
                     .to_owned()
             )
