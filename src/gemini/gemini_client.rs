@@ -15,7 +15,7 @@ use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_message::GeminiFunctionAlarm;
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
 use crate::service::discord_error_msg::send_debug_error_log;
-use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
+use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_BOT_TOOLS_MODULES, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
 use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotToolInputValueType};
@@ -100,7 +100,7 @@ pub trait GeminiClientTrait {
     Result<GeminiCachedContentResponse, String>;
     fn new() -> Self;
     async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>,cached:Option<String>) -> Result<GeminiResponse, String>;
-    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,cached:Option<String>) -> Value {
+    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,cached:Option<String>,is_start:bool) -> Value {
         let generation_conf = if thinking_bought.is_some() {
             let mut origin = GENERATE_CONF.clone();
             origin.thinking_config = Some(
@@ -114,7 +114,25 @@ pub trait GeminiClientTrait {
             GENERATE_CONF.clone()
         };
         let cached_info = cached;
-        json!({
+        if is_start {
+            json!({
+            "contents": 
+                query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
+            ,
+            "generationConfig": generation_conf,
+            "safetySettings": SAFETY_SETTINGS.clone(),
+            "cachedContent":cached_info,
+            "toolConfig": {
+                "functionCallingConfig": {
+                    "mode": "ANY",
+                    "allowedFunctionNames": GEMINI_BOT_TOOLS_MODULES.iter().map(|tool| tool.name.clone()).collect::<Vec<_>>()
+                }
+            },
+            "systemInstruction": generate_gemini_user_chunk(begin_query),
+            "tools": GEMINI_BOT_TOOLS_JSON.clone()
+        })
+        } else {
+            json!({
             "contents": 
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ,
@@ -122,6 +140,8 @@ pub trait GeminiClientTrait {
             "safetySettings": SAFETY_SETTINGS.clone(),
             "cachedContent":cached_info
         })
+        }
+        
     }
 
     async fn drop_cache(&mut self, cache_key: &str) -> Result<(), String>;
@@ -182,7 +202,7 @@ impl GeminiClientTrait for GeminiClient {
             api_key
         );
 
-        let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought,cached);
+        let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought,cached.clone(),cached.is_none());
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
         let mut integral_content_part = vec![];
         if let Some(contents) = objected_query.get("contents") {
