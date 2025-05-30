@@ -14,6 +14,8 @@ pub struct Model {
     pub repeat_end_at: Option<DateTime>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
+    pub user_id: i32,
+    pub user_name: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

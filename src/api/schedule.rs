@@ -6,7 +6,7 @@ use sqlx::types::{chrono::Local, time};
 use std::sync::{Arc};
 use tokio::sync::{watch::Sender, Mutex};
 
-use crate::{libs::{thread_message::DiscordToGeminiMessage, thread_pipelines::{AsyncThreadPipeline, GEMINI_FUNCTION_EXECUTION_ALARM, SCHEDULE_TO_DISCORD_PIPELINE}}, model::db::driver::DB_CONNECTION_POOL, service::discord_error_msg::{send_additional_log, send_debug_error_log}};
+use crate::{libs::{thread_message::{DiscordToGeminiMessage, GeminiFunctionAlarm}, thread_pipelines::{AsyncThreadPipeline, GEMINI_FUNCTION_EXECUTION_ALARM, SCHEDULE_TO_DISCORD_PIPELINE}}, model::db::driver::DB_CONNECTION_POOL, service::discord_error_msg::{send_additional_log, send_debug_error_log}};
 
 
 pub struct ScheduleRequest {
@@ -45,7 +45,7 @@ pub fn make_alarm_schedule(
 pub struct ScheduleService {
     alarm_target_model: Option<tb_alarm_model::Model>,
     alarm_thread: Option<tokio::task::JoinHandle<()>>,
-    alarm_pipe_sender: Sender<DiscordToGeminiMessage<Option<tb_alarm_model::Model>>>,
+    alarm_pipe_sender: Sender<GeminiFunctionAlarm<Option<tb_alarm_model::Model>>>,
 }
 
 impl RSContextService for ScheduleService {
@@ -147,7 +147,31 @@ impl ScheduleService {
             return; // 아직 알람을 울릴 시간이 아니다.
         }
 
-
+        // 알람을 울린다.
+        let alarm_model = self.alarm_target_model.as_ref().unwrap().clone();
+        let alarm_model = tb_alarm_model::Model {
+            id: alarm_model.id,
+            time: alarm_model.time,
+            message: alarm_model.message,
+            repeat_circle: alarm_model.repeat_circle,
+            repeat_end_at: alarm_model.repeat_end_at,
+            created_at: alarm_model.created_at,
+            updated_at: Local::now().naive_local(),
+            user_id: alarm_model.user_id,
+            user_name: alarm_model.user_name,
+        };
+        let alarm_item = GeminiFunctionAlarm {
+            message: Some(alarm_model.clone()),
+            sender:alarm_model.clone().user_id.to_string(),
+            channel_id: alarm_model.clone().id.to_string(),
+            message_id: "".to_string(),
+            guild_id: "0".to_string(),
+        };
+        self.alarm_pipe_sender.send(alarm_item)
+        .unwrap_or_else(|e| {
+            // Fire and forget the async error log
+            tokio::spawn(send_debug_error_log(format!("Failed to send alarm message: {}", e)));
+        });
     }
     
 }

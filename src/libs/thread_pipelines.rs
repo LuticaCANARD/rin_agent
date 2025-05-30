@@ -26,6 +26,6 @@ lazy_static! {
     pub static ref GEMINI_FUNCTION_EXECUTION_ALARM: AsyncThreadPipeline<GeminiChannelResult> =
         AsyncThreadPipeline::new(); // 버퍼 크기 설정
 
-    pub static ref SCHEDULE_TO_DISCORD_PIPELINE: AsyncThreadPipeline<DiscordToGeminiMessage<Option<tb_alarm_model::Model>>> =
+    pub static ref SCHEDULE_TO_DISCORD_PIPELINE: AsyncThreadPipeline<GeminiFunctionAlarm<Option<tb_alarm_model::Model>>> =
         AsyncThreadPipeline::new(); // 버퍼 크기 설정
 }
