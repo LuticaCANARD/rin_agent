@@ -4,9 +4,9 @@ use rs_ervice::RSContextService;
 use sea_orm::{prelude::{DateTime, TimeDateTime}, EntityTrait, TransactionTrait};
 use sqlx::types::{chrono::Local, time};
 use std::sync::{Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{watch::Sender, Mutex};
 
-use crate::{model::db::driver::DB_CONNECTION_POOL, service::discord_error_msg::{send_additional_log, send_debug_error_log}};
+use crate::{libs::{thread_message::DiscordToGeminiMessage, thread_pipelines::{AsyncThreadPipeline, GEMINI_FUNCTION_EXECUTION_ALARM, SCHEDULE_TO_DISCORD_PIPELINE}}, model::db::driver::DB_CONNECTION_POOL, service::discord_error_msg::{send_additional_log, send_debug_error_log}};
 
 
 pub struct ScheduleRequest {
@@ -45,6 +45,7 @@ pub fn make_alarm_schedule(
 pub struct ScheduleService {
     alarm_target_model: Option<tb_alarm_model::Model>,
     alarm_thread: Option<tokio::task::JoinHandle<()>>,
+    alarm_pipe_sender: Sender<DiscordToGeminiMessage<Option<tb_alarm_model::Model>>>,
 }
 
 impl RSContextService for ScheduleService {
@@ -69,6 +70,7 @@ impl ScheduleService {
         Self {
             alarm_target_model:None,
             alarm_thread: None,
+            alarm_pipe_sender: SCHEDULE_TO_DISCORD_PIPELINE.sender.clone(),
         }
     }
 
@@ -122,11 +124,6 @@ impl ScheduleService {
 
         
         let inserted_schedule = insert_result.unwrap();
-        #[cfg(debug_assertions)]
-        send_additional_log(
-            format!("Schedule on Ok!, {:?}",
-                inserted_schedule.clone()),
-                None).await;
         // 이하는 캐싱 교체 !
         if let Some(remain) = &self.alarm_target_model {
             if schedule.start < remain.time {

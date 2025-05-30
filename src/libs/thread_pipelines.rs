@@ -1,6 +1,7 @@
 // 이 파일에는 thread간 통신을 위한 파이프라인이 포함되어야 함.
 
 use tokio::sync::watch;
+use entity::tb_alarm_model;
 use crate::{gemini::types::GeminiActionResult, libs::thread_message::{
     DiscordToGeminiMessage,GeminiFunctionAlarm
 }};
@@ -23,5 +24,8 @@ pub type GeminiChannelResult = GeminiFunctionAlarm<GeminiActionResult>;
 
 lazy_static! {
     pub static ref GEMINI_FUNCTION_EXECUTION_ALARM: AsyncThreadPipeline<GeminiChannelResult> =
+        AsyncThreadPipeline::new(); // 버퍼 크기 설정
+
+    pub static ref SCHEDULE_TO_DISCORD_PIPELINE: AsyncThreadPipeline<DiscordToGeminiMessage<Option<tb_alarm_model::Model>>> =
         AsyncThreadPipeline::new(); // 버퍼 크기 설정
 }
