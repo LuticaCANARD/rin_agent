@@ -683,8 +683,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
     // 이후의 컨텍스트가 존재하면 true
     let there_is_next_context = after_parent.len() > 0;
-    let cache_is_vaild =  !there_is_next_context && ai_context_info.cache_expires_at.to_utc() > (chrono::Utc::now() + ChronoDuration::seconds(2));
-    let cache_key = if cache_is_vaild{
+    let cache_is_valid =  !there_is_next_context && ai_context_info.cache_expires_at.to_utc() > (chrono::Utc::now() + ChronoDuration::seconds(2));
+    let cache_key: Option<String> = if cache_is_valid == true && ai_context_info.cache_key.is_some() {
         ai_context_info.cache_key.clone()
     } else {
         None
@@ -694,7 +694,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     } else {
         None
     };
-    let send_vector = if cache_is_vaild {
+    let send_vector = if cache_is_valid {
         vec![user_msg_current.clone()]
     } else {
         before_messages.clone()

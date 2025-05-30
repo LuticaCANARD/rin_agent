@@ -32,6 +32,7 @@ use crate::libs::thread_message::GeminiFunctionAlarm;
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 use crate::libs::thread_pipelines::GeminiChannelResult;
 use crate::libs::thread_pipelines::GEMINI_FUNCTION_EXECUTION_ALARM;
+use crate::service::discord_error_msg::send_debug_error_log;
 use std::sync::LazyLock;
 use tokio::signal;
 
@@ -166,10 +167,13 @@ impl BotManager{
             loop {
                 match fun_alarm_receiver.changed().await {
                     Ok(_) => {
-                        
-                        let alarm = fun_alarm_receiver.borrow_and_update();
-                        LOGGER.log(LogLevel::Debug, &format!("Gemini function alarm received. {}",alarm.message_id));
-                        
+                        // Clone the message_id to avoid holding the guard across await
+                        let message_id = {
+                            let alarm = fun_alarm_receiver.borrow_and_update();
+                            alarm.message_id.clone()
+                        };
+                        LOGGER.log(LogLevel::Debug, &format!("Gemini function alarm received. {}", message_id));
+                        send_debug_error_log(format!("Gemini function alarm received. {}", message_id)).await;
                     }
                     Err(_) => {
                         LOGGER.log(LogLevel::Error, "Gemini function alarm receiver has been closed.");
