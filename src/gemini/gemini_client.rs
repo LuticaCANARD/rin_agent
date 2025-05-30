@@ -453,12 +453,19 @@ impl GeminiClientTrait for GeminiClient {
         match response {
             Ok(resp) => {
                 if !resp.status().is_success() {
+                    let resp_status = resp.status();
+                    let reason = resp.text().await.unwrap_or_else(|_| "No response text".to_string());
                     let error_message = format!(
-                        "Gemini API > Error_status: {} / {}", resp.status(), 
-                        resp.text().await.unwrap_or_else(|_| "No response text".to_string())
+                        "Gemini API > Error_status: {} / {}", resp_status, 
+                        reason
                     );
-                    send_debug_error_log(error_message.clone()).await;
-                    return Err(error_message);
+                    if reason.contains("Cached content is too small") {
+                        return Err(format!("Gemini API > Error: {}", reason));
+                    } else {
+                        send_debug_error_log(error_message.clone()).await;
+                        return Err(error_message);
+                    }
+
                 }
                 let rest_text = resp.text().await.map_err(|e| format!("Failed to read response text: {}", e))?;
 
