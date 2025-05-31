@@ -26,11 +26,11 @@ src/
 
 ## DB migration
 
-> cd .\entity\src\ && sea-orm-cli generate entity --lib && cd ../..
+> cd ./entity/src/ && sea-orm-cli generate entity --lib && cd ../..
 > sea-orm-cli migrate up
 
-root@ubuntu:/home/lutica/lutica_server/RinAgent/rin_agent# export PATH=$PATH:/root/.cargo/bin
-root@ubuntu:/home/lutica/lutica_server/RinAgent/rin_agent# sea-orm-cli migrate up
+export PATH=$PATH:/root/.cargo/bin
+sea-orm-cli migrate up
 
 ## 서버 재기동
 

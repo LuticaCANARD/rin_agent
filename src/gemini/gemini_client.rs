@@ -6,6 +6,7 @@ use std::hash::Hash;
 
 use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, GeminiFunctionCallingConfig, GeminiGenerationConfigTool, GeminiToolConfig, GeminiToolConfigMode, ThinkingConfig};
 use reqwest::Client;
+use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
@@ -362,7 +363,26 @@ impl GeminiClientTrait for GeminiClient {
                         .await
                         .map_err(|e| e.to_string())?;
                     let response_result = response.text().await.unwrap();
-                    hasher.write(response_result.as_bytes());
+                    let body_jsoned = serde_json::from_str::<Value>(&response_result).unwrap()
+                    .get("candidates")
+                        .and_then(|candidates| candidates.as_array())
+                        .and_then(|candidates| candidates.last())
+                        .and_then(|candidates| candidates.as_object())
+                        .and_then(|candidates| candidates.get("content"))
+                        .and_then(|contents| contents.as_object())
+                        .and_then(|candidates| candidates.get("parts"))
+                        .and_then(|parts| parts.as_array())
+                        .map(|arr| {
+                            arr.iter().filter(|p| {
+                                p.as_object()
+                                    .map(|obj| obj.get("thought").is_none())
+                                    .unwrap_or(true)
+                            }).collect::<Vec<_>>()
+                        })
+                        .map(|vec| serde_json::to_string(&vec).unwrap_or_default()) // <-- 변경
+                        .unwrap_or_default();
+
+                    hasher.write(body_jsoned.as_bytes());
                     let hash_value = hasher.finish();
                     if hash_value == last_hash && trycount > 10 {
                         send_debug_error_log(
