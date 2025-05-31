@@ -41,7 +41,7 @@ async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
         } else {
             "prod"
         };
-        send_additional_log(format!("{} > SIGINT received, shutting down...",is_dev).to_string(),None).await;
+        tokio::task::spawn_blocking(move || send_additional_log(format!("{} > SIGINT received, shutting down...",is_dev).to_string(),None));
         sigint_notify_clone.notify_one();
     });
 

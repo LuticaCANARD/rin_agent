@@ -1,7 +1,9 @@
+use chrono::{DateTime, FixedOffset};
 use entity::tb_alarm_model;
+use gemini_live_api::libs::logger::LOGGER;
 use rocket::time::{Date, OffsetDateTime, UtcOffset};
 use rs_ervice::RSContextService;
-use sea_orm::{prelude::{DateTime, TimeDateTime}, EntityTrait, TransactionTrait};
+use sea_orm::{EntityTrait, TransactionTrait};
 use sqlx::types::{chrono::Local, time};
 use std::sync::{Arc};
 use tokio::sync::{watch::Sender, Mutex};
@@ -10,8 +12,8 @@ use crate::{libs::{thread_message::{DiscordToGeminiMessage, GeminiFunctionAlarm}
 
 
 pub struct ScheduleRequest {
-    pub start: DateTime,
-    pub end: DateTime,
+    pub start: DateTime<FixedOffset>,
+    pub end: DateTime<FixedOffset>,
     pub timezone: String,
     pub name: String,
     pub description: Option<String>,
@@ -20,13 +22,13 @@ pub struct ScheduleRequest {
 pub struct ScheduleRepeatRequest {
     pub repeat_type: String,
     pub repeat_interval: i32,
-    pub repeat_end: Option<DateTime>,
+    pub repeat_end: Option<DateTime<FixedOffset>>,
 }
 
 pub struct ScheduleResponse {
     pub id: i32,
-    pub start: DateTime,
-    pub end: DateTime,
+    pub start: DateTime<FixedOffset>,
+    pub end: DateTime<FixedOffset>,
     pub timezone: String,
     pub name: String,
     pub description: Option<String>,
@@ -104,10 +106,13 @@ impl ScheduleService {
                     message: sea_orm::Set(schedule.description.unwrap_or_default()),
                     repeat_circle: sea_orm::Set(schedule.repeat.as_ref()
                     .map(|r| r.repeat_type.clone())),
-                    repeat_end_at:sea_orm::Set(schedule.repeat.as_ref()
-                    .and_then(|r| r.repeat_end)),
-                    created_at: sea_orm::Set(DateTime::from(Local::now().naive_local())),
-                    updated_at: sea_orm::Set(DateTime::from(Local::now().naive_local())),
+                    repeat_end_at: sea_orm::Set(
+                        schedule.repeat.as_ref()
+                            .and_then(|r| r.repeat_end)
+                            .map(|dt| dt.naive_local())
+                    ),
+                    created_at: sea_orm::Set(Local::now().with_timezone(&Local::now().offset())),
+                    updated_at: sea_orm::Set(Local::now().with_timezone(&Local::now().offset())),
                     ..Default::default()
                 };
                 let ret = tb_alarm_model::Entity::insert(new_alarm)
@@ -125,6 +130,11 @@ impl ScheduleService {
         
         let inserted_schedule = insert_result.unwrap();
         // 이하는 캐싱 교체 !
+        LOGGER.log(
+            gemini_live_api::libs::logger::LogLevel::Debug,
+            &format!("알람이 설정되었습니다: {:?}", inserted_schedule),
+        );
+
         if let Some(remain) = &self.alarm_target_model {
             if schedule.start < remain.time {
                 self.alarm_target_model = Some(inserted_schedule.clone());
@@ -142,7 +152,10 @@ impl ScheduleService {
         let now = Local::now().naive_local(); // 올바른 변환
         let last_schedule = self.alarm_target_model.as_ref().unwrap().time;
 
-        let need_alarm = now > last_schedule;
+        // Convert last_schedule to NaiveDateTime for comparison
+        let last_schedule_naive = last_schedule.naive_local();
+
+        let need_alarm = now > last_schedule_naive;
         if need_alarm == false {
             return; // 아직 알람을 울릴 시간이 아니다.
         }
@@ -156,7 +169,7 @@ impl ScheduleService {
             repeat_circle: alarm_model.repeat_circle,
             repeat_end_at: alarm_model.repeat_end_at,
             created_at: alarm_model.created_at,
-            updated_at: Local::now().naive_local(),
+            updated_at: Local::now().into(),
             user_id: alarm_model.user_id,
             user_name: alarm_model.user_name,
         };

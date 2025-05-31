@@ -7,13 +7,13 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub time: DateTime,
+    pub time: DateTimeWithTimeZone,
     #[sea_orm(column_type = "Text")]
     pub message: String,
     pub repeat_circle: Option<String>,
     pub repeat_end_at: Option<DateTime>,
-    pub created_at: DateTime,
-    pub updated_at: DateTime,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
     pub user_id: i32,
     pub user_name: String,
 }

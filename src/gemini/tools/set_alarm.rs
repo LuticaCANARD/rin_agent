@@ -1,7 +1,7 @@
+use chrono::DateTime;
 use gemini_live_api::libs::logger::LOGGER;
 use gemini_live_api::types::enums::GeminiSchemaType;
 use gemini_live_api::types::GeminiSchema;
-use sea_orm::prelude::DateTime;
 use sea_orm::sea_query::time_format;
 use serde_json::{json, Value};
 
