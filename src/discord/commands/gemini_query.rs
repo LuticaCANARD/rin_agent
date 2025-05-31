@@ -11,12 +11,12 @@ use sea_orm::prelude::{DateTime, Expr};
 use sea_orm::sea_query::{Alias, ExprTrait};
 use sea_orm::{Condition, ConnectionTrait, DbErr, EntityTrait, Insert, InsertResult, JoinType, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionError, TransactionTrait, Update};
 use serenity::builder::*;
-use serenity::model::{guild, prelude::*};
+use serenity::model::{guild, prelude::*, user};
 use serenity::prelude::*;
 use chrono::{DateTime as ChronoDateTime, Utc, Duration as ChronoDuration};
 use crate::discord::constant::DISCORD_DB_ERROR;
 use crate::gemini::gemini_client::{self, GeminiCacheInfo, GeminiClientTrait};
-use crate::gemini::types::{GeminiChatChunk, GeminiImageInputType, GeminiResponse};
+use crate::gemini::types::{DiscordUserInfo, GeminiChatChunk, GeminiImageInputType, GeminiResponse};
 use crate::gemini::utils::upload_image_to_gemini;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::model::db::driver::DB_CONNECTION_POOL;
@@ -174,6 +174,13 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 Some(_options.channel_id.get())
             );
             let mut gemini_client = gemini_client::GeminiClient::new();
+            let user_info = Some(
+                DiscordUserInfo {
+                    user_id: _options.user.id,
+                    username: Some(_options.user.name.clone()),
+                    channel_id: _options.channel_id,
+                }
+            );
             let response = 
                             gemini_client
                             .send_query_to_gemini(
@@ -183,7 +190,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                                 &start_query,
                                 use_pro,
                                 thinking_bought,
-                                None
+                                None,
+                                user_info
                             )
                             .await;
             if response.is_err() {
@@ -668,6 +676,13 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     ,Some(calling_msg.guild_id.unwrap().get()),
     Some(calling_msg.channel_id.get())
     );
+    let user_info = Some(
+        DiscordUserInfo {
+            user_id: calling_msg.author.id,
+            username: Some(calling_msg.author.name.clone()),
+            channel_id: calling_msg.channel_id,
+        }
+    );
 
 
     let ai_response = gemini_client
@@ -677,10 +692,9 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         context_using_pro,
         thinking_bought,
         cache_key,
+        user_info
     )
     .await;
-
-    
     if ai_response.is_err() {
         typing.stop();
         LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", ai_response));

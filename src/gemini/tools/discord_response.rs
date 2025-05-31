@@ -45,7 +45,7 @@ pub fn get_command() -> GeminiBotTools {
                 pattern: None,
             })
         ]),
-        action: |params| Box::pin(async move { set_alarm(params).await }),
+        action: |params,info| Box::pin(async move { set_alarm(params).await }),
         response: Some(GeminiSchema {
             schema_type: GeminiSchemaType::Object,
             title: Some("Response Message Schema".to_string()),

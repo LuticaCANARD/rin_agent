@@ -6,20 +6,15 @@ use std::hash::Hash;
 
 use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, GeminiFunctionCallingConfig, GeminiGenerationConfigTool, GeminiToolConfig, GeminiToolConfigMode, ThinkingConfig};
 use reqwest::Client;
-use rocket::time::serde::iso8601::deserialize;
 use serde_json::{json, Map, Value};
-use serenity::json;
-
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
-use crate::libs::thread_message::GeminiFunctionAlarm;
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
 use crate::service::discord_error_msg::send_debug_error_log;
 use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_BOT_TOOLS_MODULES, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
-use super::types::{GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotToolInputValueType};
-use super::utils::translate_to_gemini_param;
+use super::types::{DiscordUserInfo, GeminiBotToolInputValue, GeminiBotToolInputValueType};
 
 pub struct GeminiCacheInfo {
     pub cached_key : String,
@@ -71,6 +66,29 @@ fn make_fncall_result_with_value(fn_name:String, fn_res_json:Value) -> Value {
     })
 }
 
+
+fn generate_to_value(k:String,v:Value) -> (String, GeminiBotToolInputValue) {
+    let value = GeminiBotToolInputValue{
+    name: k.clone(),
+    value: match v {
+        Value::String(s) => GeminiBotToolInputValueType::String(s),
+        Value::Number(n) if n.is_f64() => GeminiBotToolInputValueType::Number(n.as_f64().unwrap()),
+        Value::Number(n) if n.is_i64() => GeminiBotToolInputValueType::Integer(n.as_i64().unwrap()),
+        Value::Bool(b) => GeminiBotToolInputValueType::Boolean(b),
+        Value::Array(arr) => GeminiBotToolInputValueType::Array(arr.into_iter()
+            .map(|v| match v {
+                Value::String(s) => GeminiBotToolInputValueType::String(s),
+                Value::Number(n) if n.is_f64() => GeminiBotToolInputValueType::Number(n.as_f64().unwrap()),
+                Value::Number(n) if n.is_i64() => GeminiBotToolInputValueType::Integer(n.as_i64().unwrap()),
+                Value::Bool(b) => GeminiBotToolInputValueType::Boolean(b),
+                _ => GeminiBotToolInputValueType::Null,
+            }).collect()),
+        _ => GeminiBotToolInputValueType::Null,
+    },
+    };
+    (k, value)
+} 
+
 pub fn generate_gemini_cache_setting(
     query: Vec<GeminiChatChunk>,
     begin_query: &GeminiChatChunk,
@@ -99,7 +117,12 @@ pub trait GeminiClientTrait {
     async fn start_gemini_cache(&mut self, query: Vec<GeminiChatChunk>, begin_query: &GeminiChatChunk, use_pro: bool, ttl:f32) -> 
     Result<GeminiCachedContentResponse, String>;
     fn new() -> Self;
-    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,use_pro:bool,thinking_bought:Option<i32>,cached:Option<String>) -> Result<GeminiResponse, String>;
+    async fn send_query_to_gemini(&mut self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,
+        use_pro:bool,
+        thinking_bought:Option<i32>,
+        cached:Option<String>,
+        user_info:Option<DiscordUserInfo>
+) -> Result<GeminiResponse, String>;
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,cached:Option<String>,is_start:bool) -> Value {
         let generation_conf = if thinking_bought.is_some() {
             let mut origin = GENERATE_CONF.clone();
@@ -152,47 +175,14 @@ impl GeminiClientTrait for GeminiClient {
             net_client: Client::new(),
         }
     }
-/* curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
--H 'Content-Type: application/json' \
--X POST \
--d '{
-    "contents": [
-    {
-        "parts": [
-        {
-            "text": "Write a story about a magic backpack."
-        }
-        ]
-    }
-    ],
-    "generationConfig": {
-        "responseMimeType": "application/json",
-        "responseSchema": {
-          "type": "ARRAY",
-          "items": {
-            "type": "OBJECT",
-            "properties": {
-              "recipeName": { "type": "STRING" },
-              "ingredients": {
-                "type": "ARRAY",
-                "items": { "type": "STRING" }
-              }
-            },
-            "propertyOrdering": ["recipeName", "ingredients"]
-          }
-        }
-      }
-}'
-* 
-*/
-
     async fn send_query_to_gemini(
         &mut self, 
         query: Vec<GeminiChatChunk>,
         begin_query:&GeminiChatChunk,
         use_pro:bool,
         thinking_bought:Option<i32>,
-        cached:Option<String>
+        cached:Option<String>,
+        user_info:Option<DiscordUserInfo>
     ) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
@@ -293,30 +283,11 @@ impl GeminiClientTrait for GeminiClient {
                                 
                                 if let Some(fn_result) = GEMINI_BOT_TOOLS.get(fn_name) {
                                     let fn_args: HashMap<String, GeminiBotToolInputValue> = args.clone().into_iter()
-                                        .map(|(k, v)| {
-                                            let value = GeminiBotToolInputValue{
-                                                name: k.clone(),
-                                                value: match v {
-                                                    Value::String(s) => GeminiBotToolInputValueType::String(s),
-                                                    Value::Number(n) if n.is_f64() => GeminiBotToolInputValueType::Number(n.as_f64().unwrap()),
-                                                    Value::Number(n) if n.is_i64() => GeminiBotToolInputValueType::Integer(n.as_i64().unwrap()),
-                                                    Value::Bool(b) => GeminiBotToolInputValueType::Boolean(b),
-                                                    Value::Array(arr) => GeminiBotToolInputValueType::Array(arr.into_iter()
-                                                        .map(|v| match v {
-                                                            Value::String(s) => GeminiBotToolInputValueType::String(s),
-                                                            Value::Number(n) if n.is_f64() => GeminiBotToolInputValueType::Number(n.as_f64().unwrap()),
-                                                            Value::Number(n) if n.is_i64() => GeminiBotToolInputValueType::Integer(n.as_i64().unwrap()),
-                                                            Value::Bool(b) => GeminiBotToolInputValueType::Boolean(b),
-                                                            _ => GeminiBotToolInputValueType::Null,
-                                                        }).collect()),
-                                                    _ => GeminiBotToolInputValueType::Null,
-                                                },
-                                            };
-                                            (k, value)
-                                        })
+                                        .map(|(k,v)| generate_to_value(k,v))
                                         .collect();
+                                    
                                     integral_content_part.push(make_fncall_result(fn_name.to_string(), args));
-                                    let res = (fn_result.action)(fn_args).await;
+                                    let res = (fn_result.action)(fn_args,user_info.clone()).await;
                                     match res {
                                         Ok(result) => {
                                             command_result.push(Ok(result.clone()));

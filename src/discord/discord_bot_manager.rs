@@ -148,8 +148,6 @@ pub async fn get_discord_service() -> &'static RSContext {
     }
 }
 
-
-
 impl BotManager{
     pub async fn new() -> Self {
         let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
@@ -216,9 +214,11 @@ impl BotManager{
                                     Some(m) => m.message,
                                     None => "No message provided".to_string(),
                                 };
-                                send_message_for_alarm::<Arc<Http>>(client_control.clone(), channel_id, target_user, msg.clone())
-                                .await
-                                .unwrap();
+                                LOGGER.log(LogLevel::Debug, &format!("Sending alarm message to {},{}: {}", target_user, channel_id, msg));
+                                let _ = send_message_for_alarm::<Arc<Http>>(client_control.clone(), channel_id, target_user, msg.clone())
+                                .await.map_err(|e| {
+                                    LOGGER.log(LogLevel::Error, &format!("Failed to send alarm message: {:?}", e));
+                                });
                             }
                             Err(_) => {
                                 LOGGER.log(LogLevel::Error, "Alarm receiver has been closed.");

@@ -3,6 +3,7 @@ use std::{collections::{hash_map, BTreeMap}, default, future::Future, pin::Pin};
 use gemini_live_api::types::{enums::{GeminiSchemaFormat, GeminiSchemaType}, GeminiSchema, GeminiSchemaObject};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use serenity::all::{ChannelId, UserId};
 
 #[derive(Debug, Clone,Default)]
 pub struct GeminiActionResult {
@@ -103,7 +104,7 @@ pub struct GeminiBotTools {
     pub name: String,
     pub description: String,
     pub parameters: GeminiAPIObjectStruct,    
-    pub action: fn(hash_map::HashMap<String, GeminiBotToolInputValue>) 
+    pub action: fn(hash_map::HashMap<String, GeminiBotToolInputValue>, Option<DiscordUserInfo>) 
         -> Pin<Box<dyn Future<Output = Result<GeminiActionResult,String>> + Send>>,
     pub response :  Option<GeminiSchema>
 }
@@ -113,7 +114,7 @@ impl Default for GeminiBotTools{
             name: "default".to_string(),
             description: "default".to_string(),
             parameters: GeminiAPIObjectStruct::new(),
-            action: |params| Box::pin(async move { Ok(GeminiActionResult{
+            action: |params,info| Box::pin(async move { Ok(GeminiActionResult{
                 result_message: "default".to_string(),
                 result: json!({}),
                 error: None,
@@ -124,8 +125,12 @@ impl Default for GeminiBotTools{
     }
 }
 
-
-
+#[derive(Debug, Clone)]
+pub struct DiscordUserInfo {
+    pub user_id: UserId,
+    pub username: Option<String>,
+    pub channel_id: ChannelId
+}
 
 pub fn generate_input_to_dict(input: GeminiBotToolInput) -> (String, GeminiBotToolInput) {
     (input.name.clone(), input)

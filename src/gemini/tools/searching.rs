@@ -105,6 +105,6 @@ pub fn get_command() -> GeminiBotTools {
             example: EXAMPLE_RESULT.clone(),
             ..Default::default()
         }),
-        action: |params| Box::pin(async move { searching(params).await }),
+        action: |params,info| Box::pin(async move { searching(params).await }),
     }
 }

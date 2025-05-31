@@ -82,6 +82,6 @@ pub fn get_command()-> GeminiBotTools {
             ])),
             ..Default::default()
         }),
-        action: |params| Box::pin(async move { web_connect(params).await }),
+        action: |params,info| Box::pin(async move { web_connect(params).await }),
     }
 }

@@ -4,16 +4,17 @@ use gemini_live_api::types::enums::GeminiSchemaType;
 use gemini_live_api::types::GeminiSchema;
 use sea_orm::sea_query::time_format;
 use serde_json::{json, Value};
+use serenity::model::user;
 
 use crate::api::instances::get_rin_services;
 use crate::api::schedule::{ScheduleRepeatRequest, ScheduleRequest, ScheduleService};
-use crate::gemini::types::{generate_input_to_dict, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotToolInputValueType, GeminiBotTools};
+use crate::gemini::types::{generate_input_to_dict, DiscordUserInfo, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotToolInputValueType, GeminiBotTools};
 
 use std::collections::{BTreeMap, HashMap};
 use sqlx::types::time;
 use gemini_live_api::types::enums::GeminiSchemaFormat;
 
-async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<GeminiActionResult, String> {
+async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>,info:Option<DiscordUserInfo>) -> Result<GeminiActionResult, String> {
     let time = params.get("time");
     if time.is_none() {
         return Err("Missing 'time' parameter".to_string());
@@ -68,10 +69,6 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
     };
 
     LOGGER.log(gemini_live_api::libs::logger::LogLevel::Debug, &format!("Parsed start time: {:?}", start));
-
-    let timezone = params.get("timezone")
-        .map_or("UTC".to_string(), |v| v.value.to_string());
-
     let description = if let Some(desc) = message {
         Some(desc.value.to_string())
     } else {
@@ -102,7 +99,15 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
         Ok(e) => e,
         Err(_) => start, // Default to max if no end date is provided
     };
-    let alarm_item = ScheduleRequest{start, end, timezone, name, description, repeat};
+    if info.is_none() {
+        return Err("User information is required to set an alarm".to_string());
+    }
+    let info = info.unwrap();
+
+    let user_id = info.user_id;
+    let channel_id = info.channel_id;
+
+    let alarm_item = ScheduleRequest{start, end, name, description, repeat,sender:user_id,channel_id,guild_id:None};
     get_rin_services()
         .await
         .call::<ScheduleService>()
@@ -127,7 +132,7 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
 pub fn get_command() -> GeminiBotTools {
     GeminiBotTools {
         name: "set_alarm".to_string(),
-        description: "Set an alarm".to_string(),
+        description: "Set an alarm : 시간대도 반영되어야 함.".to_string(),
         parameters: vec![
             GeminiBotToolInput {
                 name: "time".to_string(),
@@ -141,20 +146,6 @@ pub fn get_command() -> GeminiBotTools {
                 pattern: None
                 //Some("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$".to_string()),
 
-            },
-            GeminiBotToolInput {
-                name: "timezone".to_string(),
-                description: "Set the timezone for the alarm (UTC+9 => +9, UTC-1 = -1)".to_string(),
-                input_type: GeminiSchemaType::Integer,
-                required: true,
-                format: Some(GeminiSchemaFormat::Int32),
-                default: None,
-                enum_values: None,
-                example: Some(
-                    json!("UTC+9 => +9, UTC-1 = -1".to_string())
-                ),
-                pattern: None,
-                //Some("^[+-][0-9]{1,2}$".to_string()),
             },
             GeminiBotToolInput{
                 name: "callguild".to_string(),
@@ -243,7 +234,7 @@ pub fn get_command() -> GeminiBotTools {
             },
 
         ].into_iter().map(generate_input_to_dict).collect(),
-        action: |params| Box::pin(async move { set_alarm(params).await }),
+        action: |params,info| Box::pin(async move { set_alarm(params,info).await }),
         response: Some(GeminiSchema{
         schema_type: GeminiSchemaType::Object,
         title: Some("Set Alarm Response Schema".to_string()),

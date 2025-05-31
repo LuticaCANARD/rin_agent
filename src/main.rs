@@ -8,6 +8,7 @@ mod utils;
 mod web;
 mod service;
 #[cfg(test)] mod tests;
+use api::instances::init_rin_services;
 use discord::discord_bot_manager::get_discord_service;
 use discord::discord_bot_manager::BotManager;
 use service::discord_error_msg::send_additional_log;
@@ -77,12 +78,14 @@ fn set_process_name(name: &str) {
 async fn main() {
     #[cfg(target_os = "linux")]
     set_process_name("rin_agent_main_server");
-    send_additional_log("Rin Agent Main Server started".to_string(),None).await;
+
     let _ = dotenv::dotenv();
+    let _db_init_ = connect_to_db().await;
+    init_rin_services().await;
+    send_additional_log("Rin Agent Main Server started".to_string(),None).await;
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
     let web_server_thread = tokio::spawn(async move { fn_web_server_thread().await });
 
-    let _db_init_ = connect_to_db().await;
 
     // TODO : 감시자 쓰레드를 만들고, 다른 쓰레드가 종료되면 감시자가 다시시작하던 하도록 한다.
     

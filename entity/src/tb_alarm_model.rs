@@ -14,8 +14,9 @@ pub struct Model {
     pub repeat_end_at: Option<DateTime>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
-    pub user_id: i32,
+    pub user_id: i64,
     pub user_name: String,
+    pub channel_id: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

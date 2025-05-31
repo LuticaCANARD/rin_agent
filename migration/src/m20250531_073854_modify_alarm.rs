@@ -33,6 +33,18 @@ impl MigrationTrait for Migration {
                     .not_null()
                     .default(Expr::current_timestamp())
             )
+            .modify_column(
+                ColumnDef::new(TbAlarmModel::UserId)
+                    .big_unsigned()
+                    .not_null()
+                    .default(Expr::value(0))
+            )
+            .add_column_if_not_exists(
+                ColumnDef::new(TbAlarmModel::ChannelId)
+                    .big_unsigned()
+                    .not_null()
+                    .default(Expr::value(0))
+            )
             .to_owned(),
         ).await
     }
@@ -59,6 +71,13 @@ impl MigrationTrait for Migration {
                         .not_null()
                         .default(Expr::current_timestamp())
                 )
+                .modify_column(
+                    ColumnDef::new(TbAlarmModel::UserId)
+                        .big_unsigned()
+                        .not_null()
+                        .default(Expr::value(0))
+                )
+                .drop_column(TbAlarmModel::ChannelId)
                 .to_owned(),
             )
             .await
@@ -75,5 +94,7 @@ enum TbAlarmModel {
     RepeatEndAt,
     CreatedAt,
     UpdatedAt,
+    UserId,
+    ChannelId
 }
 
