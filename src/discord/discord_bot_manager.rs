@@ -1,3 +1,4 @@
+use entity::tb_alarm_model;
 use rs_ervice::RSContext;
 use rs_ervice::RSContextBuilder;
 use rs_ervice::RSContextService;
@@ -9,7 +10,9 @@ use serenity::all::CreateInteractionResponseMessage;
 use serenity::all::CreateMessage;
 use serenity::all::Guild;
 use serenity::all::GuildId;
+use serenity::all::Http;
 use serenity::all::UnavailableGuild;
+use serenity::client;
 use serenity::client::Context;
 use serenity::prelude::*;
 use serenity::async_trait;
@@ -22,6 +25,7 @@ use std::cell::OnceCell;
 
 use std::env;
 use std::panic;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use serenity::model::prelude::*;
 use std::pin::Pin;
@@ -32,6 +36,7 @@ use crate::libs::thread_message::GeminiFunctionAlarm;
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
 use crate::libs::thread_pipelines::GeminiChannelResult;
 use crate::libs::thread_pipelines::GEMINI_FUNCTION_EXECUTION_ALARM;
+use crate::libs::thread_pipelines::SCHEDULE_TO_DISCORD_PIPELINE;
 use crate::service::discord_error_msg::send_additional_log;
 use crate::service::discord_error_msg::send_debug_error_log;
 use std::sync::LazyLock;
@@ -121,7 +126,8 @@ async fn register_commands(ctx: Context, guild_id: GuildId) {
 }
 pub struct BotManager {
     client: Client,
-    gemini_function_channel: &'static Receiver<GeminiChannelResult>
+    gemini_function_channel: &'static Receiver<GeminiChannelResult>,
+    alarm_channel: &'static Receiver<GeminiFunctionAlarm<Option<tb_alarm_model::Model>>>,
 }
 static DISCORD_SERVICE: OnceLock<rs_ervice::RSContext> = OnceLock::new();
 
@@ -151,47 +157,88 @@ impl BotManager{
             | GatewayIntents::DIRECT_MESSAGES
             | GatewayIntents::MESSAGE_CONTENT;
         let gemini_function_channel = &GEMINI_FUNCTION_EXECUTION_ALARM.receiver;
-
+        let alarm_channel = &SCHEDULE_TO_DISCORD_PIPELINE.receiver;
         Self {
             client: Client::builder(token, intents)
                 .event_handler(Handler)
                 .await
                 .expect("Error creating client"),
-            gemini_function_channel
+            gemini_function_channel,
+            alarm_channel,
         }
     }
     pub async fn run(&mut self) {
         let mut fun_alarm_receiver = self.gemini_function_channel.clone();
-        let client_control = self.client.shard_manager.clone();
-
+        let mut alarm_channel = self.alarm_channel.clone();
+        let client_control = self.client.http.clone();
         tokio::spawn(async move {
             loop {
-                match fun_alarm_receiver.changed().await {
-                    Ok(_) => {
-                        // Clone the message_id to avoid holding the guard across await
-                        let message = {
-                            let alarm = fun_alarm_receiver.borrow_and_update();
-                            alarm.clone()
-                        };
-                        LOGGER.log(LogLevel::Debug, &format!("Gemini function alarm received. {}", message.message_id));
-                        send_additional_log(
-                            format!("Gemini function alarm received. {} / <@{}> /  {}", message.message_id , message.sender, message.message.result),
-                            Some(0x00F200) 
-                        ).await;
+                tokio::select! {
+                    res = fun_alarm_receiver.changed() => {
+                        match res {
+                            Ok(_) => {
+                                let message = {
+                                    let alarm = fun_alarm_receiver.borrow_and_update();
+                                    alarm.clone()
+                                };
+                                LOGGER.log(LogLevel::Debug, &format!("Gemini function alarm received. {}", message.message_id));
+                                let channel_id = ChannelId::new(message.channel_id.parse::<u64>().unwrap());
+                                let target_user = UserId::new(message.sender.parse::<u64>().unwrap());
+                                let msg = message.message.clone().result_message;
+                                channel_id.send_message(client_control.clone(), CreateMessage::new()
+                                    .content(format!("{} \n {}", target_user.mention(), msg))
+                                    .embed(
+                                        CreateEmbed::new()
+                                            .title("Gemini Function Alarm")
+                                            .description(msg)
+                                            .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+                                    )
+                                ).await.unwrap();
+                            }
+                            Err(_) => {
+                                LOGGER.log(LogLevel::Error, "Gemini function alarm receiver has been closed.");
+                                break;
+                            }
+                        }
                     }
-                    Err(_) => {
-                        LOGGER.log(LogLevel::Error, "Gemini function alarm receiver has been closed.");
-                        break;
+                    res = alarm_channel.changed() => {
+                        match res {
+                            Ok(_) => {
+                                let message = {
+                                    let alarm = alarm_channel.borrow_and_update();
+                                    alarm.clone()
+                                };
+                                LOGGER.log(LogLevel::Debug, &format!("Alarm received. {}", message.message_id));
+                                let channel_id = ChannelId::new(message.channel_id.parse::<u64>().unwrap());
+                                let target_user = UserId::new(message.sender.parse::<u64>().unwrap());
+                                let msg = message.message.clone();
+                                let msg = match msg {
+                                    Some(m) => m.message,
+                                    None => "No message provided".to_string(),
+                                };
+                                send_message_for_alarm::<Arc<Http>>(client_control.clone(), channel_id, target_user, msg.clone())
+                                .await
+                                .unwrap();
+                            }
+                            Err(_) => {
+                                LOGGER.log(LogLevel::Error, "Alarm receiver has been closed.");
+                                break;
+                            }
+                        }
+                    }
+
+                res = signal::ctrl_c() => {
+                        match res {
+                            Ok(_) => {
+                                LOGGER.log(LogLevel::Info, "SIGINT received, shutting down...");
+                                std::process::exit(0);
+                            }
+                            Err(err) => {
+                                LOGGER.log(LogLevel::Error, &format!("Failed to listen for SIGINT: {:?}", err));
+                            }
+                        }
                     }
                 }
-        }});
-        
-        tokio::spawn(async move {
-            if let Err(err) = signal::ctrl_c().await {
-                LOGGER.log(LogLevel::Error, &format!("Failed to listen for SIGINT: {:?}", err));
-            } else {
-                LOGGER.log(LogLevel::Info, "SIGINT received, shutting down...");
-                std::process::exit(0);
             }
         });
         if let Err(why) = self.client.start().await {
@@ -199,8 +246,11 @@ impl BotManager{
         }
     }
 
-    pub async fn send_message_for_alarm(&self, channel_id: ChannelId,target_user:UserId, memo: String)->Result<serenity::all::Message, serenity::Error> {
-        channel_id.send_message(&self.client.http, CreateMessage::new()
+    
+}
+
+async fn send_message_for_alarm<T: CacheHttp>(client:T, channel_id: ChannelId,target_user:UserId, memo: String)->Result<serenity::all::Message, serenity::Error> {
+        channel_id.send_message(client, CreateMessage::new()
             .content(format!("{} \n {}", target_user.mention(), memo))
             .embed(
                 CreateEmbed::new()
@@ -210,7 +260,6 @@ impl BotManager{
             )
         ).await
     }
-}
 pub struct Handler;
 
 impl RSContextService for BotManager {
