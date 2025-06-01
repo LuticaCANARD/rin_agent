@@ -247,6 +247,8 @@ pub struct GeminiParts{
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>, // 이미지 URL
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub inline_data: Option<GeminiInlineBlob>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function_call: Option<GeminiFunctionCall>,
@@ -261,7 +263,20 @@ pub struct GeminiParts{
 
 }
 impl GeminiParts {
-    pub fn set_text(&mut self, text: String) {
+    pub fn new() -> Self {
+        GeminiParts {
+            thought: None,
+            text: None,
+            inline_data: None,
+            function_call: None,
+            function_response: None,
+            file_data: None,
+            executable_code: None,
+            code_execution_result: None,
+            image: None,
+        }
+    }
+    pub fn set_text(mut self, text: String) -> Self {
         self.text = Some(text);
         self.inline_data = None;
         self.function_call = None;
@@ -269,8 +284,9 @@ impl GeminiParts {
         self.file_data = None;
         self.executable_code = None;
         self.code_execution_result = None;
+        self
     }
-    pub fn set_inline_data(&mut self, item:GeminiInlineBlob) {
+    pub fn set_inline_data(mut self, item:GeminiInlineBlob) -> Self {
         self.text = None;
         self.inline_data = Some(item);
         self.function_call = None;
@@ -278,8 +294,9 @@ impl GeminiParts {
         self.file_data = None;
         self.executable_code = None;
         self.code_execution_result = None;
+        self
     }
-    pub fn set_function_call(&mut self, item:GeminiFunctionCall) {
+    pub fn set_function_call(mut self, item:GeminiFunctionCall)-> Self {
         self.text = None;
         self.inline_data = None;
         self.function_call = Some(item);
@@ -287,8 +304,9 @@ impl GeminiParts {
         self.file_data = None;
         self.executable_code = None;
         self.code_execution_result = None;
+        self
     }
-    pub fn set_function_response(&mut self, item:GeminiFunctionResponse) {
+    pub fn set_function_response(mut self, item:GeminiFunctionResponse) -> Self {
         self.text = None;
         self.inline_data = None;
         self.function_call = None;
@@ -296,8 +314,9 @@ impl GeminiParts {
         self.file_data = None;
         self.executable_code = None;
         self.code_execution_result = None;
+        self
     }
-    pub fn set_file_data(&mut self, item:GeminiFileData) {
+    pub fn set_file_data(mut self, item:GeminiFileData)-> Self {
         self.text = None;
         self.inline_data = None;
         self.function_call = None;
@@ -305,8 +324,9 @@ impl GeminiParts {
         self.file_data = Some(item);
         self.executable_code = None;
         self.code_execution_result = None;
+        self
     }
-    pub fn set_executable_code(&mut self, item:GeminiExecutableCode) {
+    pub fn set_executable_code(mut self, item:GeminiExecutableCode)->Self {
         self.text = None;
         self.inline_data = None;
         self.function_call = None;
@@ -314,8 +334,9 @@ impl GeminiParts {
         self.file_data = None;
         self.executable_code = Some(item);
         self.code_execution_result = None;
+        self
     }
-    pub fn set_code_execution_result(&mut self, item:GeminiExecutableCodeResult) {
+    pub fn set_code_execution_result(mut self, item:GeminiExecutableCodeResult) -> Self {
         self.text = None;
         self.inline_data = None;
         self.function_call = None;
@@ -323,6 +344,18 @@ impl GeminiParts {
         self.file_data = None;
         self.executable_code = None;
         self.code_execution_result = Some(item);
+        self
+    }
+    pub fn set_image_link(mut self, image_link: String) -> Self {
+        self.text = None;
+        self.inline_data = None;
+        self.function_call = None;
+        self.function_response = None;
+        self.file_data = None;
+        self.executable_code = None;
+        self.code_execution_result = None;
+        self.image = Some(image_link);
+        self
     }
     
 }
@@ -337,9 +370,11 @@ impl Default for GeminiParts {
             file_data: None,
             executable_code: None,
             code_execution_result: None,
+            image: None,
         }
     }
 }
+
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -364,8 +399,26 @@ pub struct GeminiFunctionResponse{
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub name: String,
-    pub args: BTreeMap<String,Value>
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub will_continue:Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduling:Option<GeminiFunctionExecutionScheduling>,
+
 }
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GeminiFunctionExecutionScheduling {
+    SchedulingUnspecified,
+    Silent,
+    WhenIdle,
+    Interrupt
+}
+
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeminiFileData{

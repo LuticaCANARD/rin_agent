@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use serenity::all::{ChannelId, UserId};
 
-#[derive(Debug, Clone,Default)]
+#[derive(Debug, Clone,Default,Deserialize,Serialize)]
 pub struct GeminiActionResult {
     pub result_message: String,
     pub result: serde_json::Value,

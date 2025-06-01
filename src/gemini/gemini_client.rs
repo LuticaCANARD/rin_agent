@@ -1,13 +1,15 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::{hash_map, BTreeMap, HashMap};
 use std::fmt::format;
 use std::hash::Hasher;
 use std::{env, hash};
 use std::hash::Hash;
 
-use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, GeminiFunctionCallingConfig, GeminiGenerationConfigTool, GeminiToolConfig, GeminiToolConfigMode, ThinkingConfig};
+use gemini_live_api::types::enums::GeminiContentRole;
+use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, GeminiContents, GeminiExecutableCode, GeminiExecutableCodeResult, GeminiFileData, GeminiFunctionCall, GeminiFunctionCallingConfig, GeminiFunctionResponse, GeminiGenerationConfigTool, GeminiInlineBlob, GeminiParts, GeminiToolConfig, GeminiToolConfigMode, ThinkingConfig};
 use reqwest::Client;
 use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
+use serenity::json;
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
@@ -29,42 +31,55 @@ fn generate_gemini_error_message(error: &str) -> String {
     format!("Gemini API > Error: {}", error)
 }
 
-fn make_fncall_result(fn_name:String, origin_argu:Map<String, Value>) -> Value {
-    json!({
-        "role": "model",
-        "parts": [{
-            "functionCall":{
-                "name": fn_name,
-                "args": origin_argu
-            }
-        }]
-    })
+fn make_fncall_result(fn_name:String, origin_argu:Map<String, Value>) -> GeminiContents {
+    let origin_argu_btree: BTreeMap<String, Value> = origin_argu.into_iter().collect();
+    let function_execution_result = GeminiParts::new().set_function_call(
+        GeminiFunctionCall {
+            name: fn_name.clone(),
+            id: None,
+            args: Some(origin_argu_btree),
+        }
+    );
+    GeminiContents{
+        role: GeminiContentRole::User,
+        parts: vec![
+            function_execution_result,
+        ]
+    }
 }
-fn make_fncall_error(fn_name:String, error: String) -> Value {
-    json!({
-        "role": "user",
-        "parts": [{
-            "functionResponse":{
-                "name": fn_name,
-                "response": {
-                    "error": {"message": error}
-                }
-            }
-        }]
-    })
-}
-fn make_fncall_result_with_value(fn_name:String, fn_res_json:Value) -> Value {
-    json!({ 
-            "role": "user", 
-            "parts": [{
-                "functionResponse":{
-                    "name": fn_name,
-                    "response": {
-                        "result": fn_res_json
+fn make_fncall_error(fn_name:String, error: String) -> GeminiContents {
+
+    let function_execution_result = GeminiParts::new().set_function_response(
+        GeminiFunctionResponse {
+            name: fn_name.clone(),
+            response: Some(
+                json!({
+                    "error": {
+                        "message": error
                     }
-            }
-        }]
-    })
+                })
+            ),
+            id: None,
+            will_continue:None,
+            scheduling: None,
+        }
+    );
+    GeminiContents{
+        role: GeminiContentRole::User,
+        parts: vec![
+            function_execution_result,
+        ]
+    }
+}
+fn make_fncall_result_with_value(fn_res:GeminiFunctionResponse) -> GeminiContents {
+    let function_execution_result = GeminiParts::new().set_function_response(fn_res);
+
+    GeminiContents{
+        role: GeminiContentRole::Model,
+        parts: vec![
+            function_execution_result,
+        ]
+    }
 }
 
 
@@ -113,6 +128,54 @@ pub fn generate_gemini_cache_setting(
         display_name: None,
     }
 }
+
+fn generate_value_to_content(value: &Value) -> GeminiParts {
+    if let Some(v) = value.get("text") {
+        GeminiParts::new().set_text(v.as_str().unwrap_or("").to_string())
+    } else if let Some(v) = value.get("inlineData") {
+        let inline_data = serde_json::from_value::<GeminiInlineBlob>(v.clone()).unwrap();
+        GeminiParts::new().set_inline_data(inline_data)
+    }  else if let Some(v) = value.get("functionCall") {
+        let function_call = v.as_object().unwrap();
+        let name = function_call.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let args = function_call.get("args").cloned().unwrap_or(Value::Null);
+        GeminiParts::new().set_function_call(
+            GeminiFunctionCall {
+                name: name.to_string(),
+                id: None,
+                args: Some(args.as_object().unwrap().clone().into_iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .into_iter().collect::<BTreeMap<_, _>>())
+                }
+            )
+    } else if let Some(v) = value.get("functionResponse") {
+        let function_res = serde_json::from_value::<GeminiFunctionResponse>(v.clone()).unwrap();
+        GeminiParts::new().set_function_response(
+            function_res.clone()
+        )
+    } else if let Some(v) = value.get("fileData") {
+        let inline_data = serde_json::from_value::<GeminiFileData>(v.clone()).unwrap();
+        GeminiParts::new().set_file_data(inline_data)
+
+    } else if let Some(v) = value.get("executableCode") {
+        let code = serde_json::from_value::<GeminiExecutableCode>(v.clone()).unwrap();
+        GeminiParts::new().set_executable_code(
+            code
+        )
+        
+    } else if let Some(v) =   value.get("executableCodeResult") {
+        let code = serde_json::from_value::<GeminiExecutableCodeResult>(v.clone()).unwrap();
+        GeminiParts::new().set_code_execution_result(
+            code
+        )
+    }else if let Some(v) = value.get("image") {
+        GeminiParts::new().set_image_link(v.as_str().unwrap_or("").to_string())
+    } else {
+        GeminiParts::new().set_text(value.to_string())
+    }
+
+}
+
 
 pub trait GeminiClientTrait {
     async fn start_gemini_cache(&mut self, query: Vec<GeminiChatChunk>, begin_query: &GeminiChatChunk, use_pro: bool, ttl:f32) -> 
@@ -192,17 +255,28 @@ impl GeminiClientTrait for GeminiClient {
             if use_pro{ GEMINI_MODEL_PRO }else{ GEMINI_MODEL_FLASH },
             api_key
         );
-
         let objected_query = self.generate_to_gemini_query(query,begin_query,thinking_bought,cached.clone(),cached.is_none());
+        
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Req: {}", objected_query));
-        let mut integral_content_part = vec![];
-        if let Some(contents) = objected_query.get("contents") {
-            if contents.as_array().is_some() {
-                integral_content_part.push(
-                    contents.as_array().unwrap().iter().last().unwrap().clone()
-                )
-            }
-        }
+        let contents = objected_query.get("contents");
+        let mut integral_content_part:Vec<GeminiContents> = if contents.is_some() && contents.unwrap().as_array().is_some() {
+            let contents = contents.unwrap();
+            contents.as_array().unwrap().into_iter().map(|c| {
+                GeminiContents {
+                    role : if c.get("role").is_some_and(|r| r.as_str() == Some("user")) {
+                        GeminiContentRole::User
+                    } else {
+                        GeminiContentRole::Model
+                    },
+                    parts: c.get("parts").and_then(|p| p.as_array())
+                        .map_or_else(|| vec![GeminiParts::new().set_text(c.to_string())], |parts| {
+                            parts.iter().map(generate_value_to_content).collect()
+                        }),
+                }
+            }).collect::<Vec<GeminiContents>>()
+        } else {
+            vec![]
+        };
         let response = self.net_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -292,7 +366,16 @@ impl GeminiClientTrait for GeminiClient {
                                     match res {
                                         Ok(result) => {
                                             command_result.push(Ok(result.clone()));
-                                            integral_content_part.push(make_fncall_result_with_value(fn_name.to_string(), json!(result.result)));
+
+                                            integral_content_part.push(make_fncall_result_with_value(
+                                                GeminiFunctionResponse {
+                                                    name: fn_name.to_string(),
+                                                    response: Some(json!(result.clone())),
+                                                    id: None,
+                                                    will_continue:None,
+                                                    scheduling: None,
+                                                }
+                                            ));
                                         let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
                                             GeminiChannelResult{
                                                 message: result.clone(),
@@ -329,23 +412,29 @@ impl GeminiClientTrait for GeminiClient {
                         LOGGER.log(LogLevel::Debug, "Gemini API > Text received");
                         let text_content = text.as_str().unwrap_or("");
                         if !text_content.is_empty() {
-                            integral_content_part.push(json!({
-                                "role": "model",
-                                "parts": [{
-                                    "text": text_content
-                                }]
-                            }));
+                            integral_content_part.push(
+                                GeminiContents {
+                                    role: GeminiContentRole::Model,
+                                    parts: vec![
+                                        GeminiParts::new().set_text(text_content.to_string())
+                                    ],
+                                }
+                            );
                         }
                         response_found = true;
                         discord_msg = text_content.to_string();
                     } else if let Some(image) = part.get("image") {
                         LOGGER.log(LogLevel::Debug, "Gemini API > Image received");
-                        integral_content_part.push(json!({
-                            "role": "model",
-                            "parts": [{
-                                "image": image
-                            }]
-                        }));
+                        integral_content_part.push(
+                            GeminiContents {
+                                role: GeminiContentRole::Model,
+                                parts: vec![
+                                    GeminiParts::new().set_image_link(
+                                        image.to_string()
+                                    )
+                                ]
+                            }
+                        );
                     } else {
                         send_debug_error_log(
                             format!("Gemini API > Unexpected response part: {:?}", part)

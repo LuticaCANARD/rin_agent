@@ -31,8 +31,7 @@ async fn make_client() {
             ..Default::default()
         }
     );
-    let mut inst_part = GeminiParts::default();
-    inst_part.set_text("you are a maid for a master".to_string());
+    let inst_part = GeminiParts::new().set_text("you are a maid for a master".to_string());
     let parts = vec![inst_part];
     let system_instruction = Some(
         GeminiContents {
@@ -74,8 +73,7 @@ async fn make_client() {
     }
     
     let message = "Hello, Gemini!";
-    let mut part_msg = GeminiParts::default();
-    part_msg.set_text(message.to_string());
+    let part_msg = GeminiParts::new().set_text(message.to_string());
     
     let parts = vec![part_msg];
     let msgcontent = BidiGenerateContentClientContent{
@@ -87,7 +85,7 @@ async fn make_client() {
         ]),
         turn_complete: Some(true),
     };
-     client.send_new_part(
+    client.send_new_part(
         msgcontent
     ).await
         .expect("Failed to send message");
@@ -96,9 +94,6 @@ async fn make_client() {
             LOGGER.log(LogLevel::Debug, format!("Received message: {:?}", msg).as_str());
         }
     ).await;
-   
-
-
 }
 
 #[test]
