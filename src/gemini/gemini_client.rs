@@ -318,6 +318,8 @@ impl GeminiClientTrait for GeminiClient {
                 ).await;
                 return Err(generate_gemini_error_message(&error_message));
             }
+
+            LOGGER.log(LogLevel::Debug, &format!("Gemini API > Response: {}", serde_json::to_string_pretty(&now_contents).unwrap_or_default()));
             let now_parts = now_contents.get("candidates")
                 .and_then(|candidates| candidates.as_array())
                 .and_then(|candidates| candidates.last())
