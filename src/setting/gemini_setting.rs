@@ -11,8 +11,8 @@ use gemini_live_api::types::{
 };
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
-pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-preview-03-25";
-pub const GEMINI_MODEL_FLASH: &str = "gemini-2.5-flash-preview-04-17"; 
+pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro-preview-06-05";
+pub const GEMINI_MODEL_FLASH: &str = "gemini-2.5-flash-preview-05-20"; 
 
 pub static MANAGER_ID: LazyLock<i64> = LazyLock::new(|| {
     env::var("MANAGER_ID").unwrap_or_default().parse::<i64>().unwrap_or(0)
