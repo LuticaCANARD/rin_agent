@@ -201,14 +201,14 @@ pub trait GeminiClientTrait {
             GENERATE_CONF.clone()
         };
         let cached_info = cached;
-        if is_start {
+        let ret = if is_start {
             json!({
             "contents": 
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ,
             "generationConfig": generation_conf,
             "safetySettings": SAFETY_SETTINGS.clone(),
-            "cachedContent":cached_info,
+            
             "toolConfig": {
                 "functionCallingConfig": {
                     "mode": "ANY",
@@ -224,11 +224,16 @@ pub trait GeminiClientTrait {
                 query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
             ,
             "generationConfig": generation_conf,
-            "safetySettings": SAFETY_SETTINGS.clone(),
-            "cachedContent":cached_info
+            "safetySettings": SAFETY_SETTINGS.clone()
         })
+        };
+        if let Some(cached_key) = cached_info {
+            let mut ret_map = ret.as_object().unwrap().clone();
+            ret_map.insert("cachedContent".to_string(), Value::String(cached_key));
+            Value::Object(ret_map)
+        } else {
+            ret
         }
-        
     }
 
     async fn drop_cache(&mut self, cache_key: &str) -> Result<(), String>;
@@ -298,8 +303,7 @@ impl GeminiClientTrait for GeminiClient {
         let mut trycount = 0;
         let mut thoughts: Option<String> = None;
         let mut hasher = hash::DefaultHasher::new();
-        let mut last_hash: u64 = 0;
-        last_hash = {
+        let mut last_hash: u64 = {
             response_result.hash(&mut hasher);
             hasher.finish()
         };

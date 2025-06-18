@@ -68,7 +68,8 @@ pub fn get_command()-> GeminiBotTools {
             title: Some("Web Connect Schema".to_string()),
             description: Some("Schema for the web connect tool".to_string()),
             properties: Some(BTreeMap::from([
-                ("html".to_string(), generate_to_schema(&GeminiBotToolInput {
+                ("html".to_string(), 
+                generate_to_schema(&GeminiBotToolInput {
                     name: "html".to_string(),
                     description: "HTML content of the web page".to_string(),
                     input_type: GeminiSchemaType::String,

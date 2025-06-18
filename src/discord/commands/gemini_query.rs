@@ -1,5 +1,6 @@
 use core::hash;
 use std::collections::{hash_map, hash_set, HashMap};
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::vec;
 
@@ -45,6 +46,10 @@ fn generate_message_block(box_msg: String, title:String , description:String,foo
         msg
     }
 }
+
+static TTL_CACHE_TIME: LazyLock<f32> = LazyLock::new(|| {
+    if cfg!(debug_assertions) { 60.0 } else { 600.0 }
+});
 
 fn user_mention(user: &User) -> String {
     format!("<@{}>\n", user.id.get())
@@ -655,7 +660,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     LOGGER.log(LogLevel::Debug, &format!("after_parent: {:?}", after_parent));
     // 이후의 컨텍스트가 존재하면 true
     let there_is_next_context = after_parent.len() > 0;
-    let cache_is_valid =  !there_is_next_context && ai_context_info.cache_expires_at.to_utc() > (chrono::Utc::now() + ChronoDuration::seconds(2));
+    let cache_is_valid =  !there_is_next_context && (ai_context_info.cache_expires_at.to_utc() > (chrono::Utc::now() + ChronoDuration::seconds(2)));
+    LOGGER.log(LogLevel::Debug, &format!("cache_is_valid: {:?},By id: {:?}, cache_time : {:?}, now: {:?}", cache_is_valid, ai_context_info.id, ai_context_info.cache_expires_at.to_utc(), chrono::Utc::now()));
     let cache_key: Option<String> = if cache_is_valid == true && ai_context_info.cache_key.is_some() {
         ai_context_info.cache_key.clone()
     } else {
@@ -814,11 +820,11 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
             let concated_query = concated_query;
             let cache_result = gemini_client.       
                 start_gemini_cache(
-                    concated_query, 
-                    &begin_query, 
-                context_using_pro, 
-                600.0)
-                .await;
+                    concated_query,
+                    &begin_query,
+                    context_using_pro,
+                    *TTL_CACHE_TIME
+                ).await;
             let cache_result = cache_result.unwrap();
             let ct = ChronoDateTime::parse_from_rfc3339(&cache_result.create_time)
                 .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()));
@@ -843,8 +849,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
             .await?;
             current_context_id_for_relation = new_discord_context.id as i64;
         } else { // 새 분기가 아닌 경우, 캐싱만 실행한다.
-
-            if  ai_context_info.cache_key.is_some() {
+            if cache_is_valid && ai_context_info.cache_key.is_some() {
                 let _dropped = gemini_client
                     .drop_cache(&ai_context_info.cache_key.unwrap().clone())
                     .await;
@@ -872,7 +877,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                 concated_query,
                 &begin_query,
                 context_using_pro,
-                600.0
+                *TTL_CACHE_TIME
             ).await;
             if created_cached.is_ok() {
                 let created_cached = created_cached.unwrap();
