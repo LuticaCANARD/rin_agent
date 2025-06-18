@@ -19,7 +19,9 @@ pub fn split_text_by_length_and_markdown(text: &str, max_length: usize) -> Vec<S
             result.push(current_chunk.clone());
             
             current_chunk.clear();
-            current_chunk.push_str(&format!("```{}", code_language));
+            if is_code_block {
+                current_chunk.push_str(&format!("```{}", code_language));
+            }
         }
         if !current_chunk.is_empty() {
             current_chunk.push('\n');
