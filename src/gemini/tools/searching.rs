@@ -60,7 +60,7 @@ async fn searching(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
 pub fn get_command() -> GeminiBotTools {
     GeminiBotTools {
         name: "searching".to_string(),
-        description: "query에 대해서 구글 검색을 합니다. 검색한 결과는 link들의 집합으로 나옵니다. 따라서, 답해줄 정보가 부족할 결루 이 이후에 링크를 web_connect에 넣어 호출하는걸 추천합니다. ".to_string(),
+        description: "query에 대해서 구글 검색을 합니다. 검색한 결과는 link들의 집합으로 나옵니다. 따라서, 답해줄 정보가 부족할 경루 이 이후에 링크를 web_connect에 넣어 호출하는걸 추천합니다. ".to_string(),
         parameters: vec![
             GeminiBotToolInput {
                 name:"query".to_string(),
