@@ -394,7 +394,7 @@ impl GeminiClientTrait for GeminiClient {
                                         Err(e) => {
                                             let error_message = e.to_string();
                                             send_debug_error_log(
-                                                format!("Gemini API > Function call error: {}", error_message)
+                                                format!("Gemini API > Function call error: {}, at : {}", error_message, fn_name)
                                             ).await;
                                             command_result.push(Err(error_message.clone()));
                                             integral_content_part.push(make_fncall_error(fn_name.to_string(), error_message));
@@ -542,7 +542,7 @@ impl GeminiClientTrait for GeminiClient {
                     let resp_status = resp.status();
                     let reason = resp.text().await.unwrap_or_else(|_| "No response text".to_string());
                     let error_message = format!(
-                        "Gemini API > Error_status: {} / {}", resp_status, 
+                        "Gemini API > Send Post Cache > Error_status: {} / {}", resp_status, 
                         reason
                     );
                     if reason.contains("Cached content is too small") {
@@ -586,7 +586,7 @@ impl GeminiClientTrait for GeminiClient {
             .map_err(|e| e.to_string())?;
         if !response.status().is_success() {
             let error_message = format!(
-                "Gemini API > Error_status: {} / {}", response.status(), 
+                "Gemini API > Drop Cache > Error_status: {} / {}", response.status(), 
                 response.text().await.unwrap_or_else(|_| "No response text".to_string())
             );
             send_debug_error_log(error_message.clone()).await;
