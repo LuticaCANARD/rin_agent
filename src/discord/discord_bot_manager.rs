@@ -23,6 +23,7 @@ use sqlx::types::chrono;
 use tokio::sync::watch::Receiver;
 use std::cell::OnceCell;
 
+
 use std::env;
 use std::panic;
 use std::sync::Arc;
@@ -30,6 +31,7 @@ use std::sync::OnceLock;
 use serenity::model::prelude::*;
 use std::pin::Pin;
 use std::future::Future;
+use crate::discord::voice_handler::voice_handler::VoiceHandler;
 use crate::gemini::types::GeminiActionResult;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_message::GeminiFunctionAlarm;
@@ -39,6 +41,7 @@ use crate::libs::thread_pipelines::GEMINI_FUNCTION_EXECUTION_ALARM;
 use crate::libs::thread_pipelines::SCHEDULE_TO_DISCORD_PIPELINE;
 use crate::service::discord_error_msg::send_additional_log;
 use crate::service::discord_error_msg::send_debug_error_log;
+use crate::service::voice_session_manager;
 use std::sync::LazyLock;
 use tokio::signal;
 
@@ -56,6 +59,7 @@ macro_rules! register_commands_module {
 }
 macro_rules! get_command_function {
     // TODO : 차후에 run에서 다 처리하도록 정정/ string으로 return하는 부분 제거
+    
     ($($module:ident),*) => {
         |name: String, context: &Context, interaction: &CommandInteraction| {
             let name = name.clone(); // Clone the name to avoid lifetime issues
@@ -104,7 +108,9 @@ define_lazy_static!(USING_COMMANDS, USING_ACTIVATE_COMMANDS,
     [
         ping,
         gemini_query,
-        repo
+        repo,
+        join_voice,
+        leave_voice
     ]
 );
 
@@ -156,11 +162,23 @@ impl BotManager{
             | GatewayIntents::MESSAGE_CONTENT;
         let gemini_function_channel = &GEMINI_FUNCTION_EXECUTION_ALARM.receiver;
         let alarm_channel = &SCHEDULE_TO_DISCORD_PIPELINE.receiver;
-        Self {
-            client: Client::builder(token, intents)
+        let client = Client::builder(token, intents)
                 .event_handler(Handler)
+                .voice_manager(
+                    VoiceHandler {}
+                )
                 .await
-                .expect("Error creating client"),
+                .expect("Error creating client");
+        {
+            let mut data = client.data.write().await;
+            if let Some(voice_manager) = client.voice_manager.as_ref() {
+                data.insert::<VoiceHandler>(
+                    Arc::new(Mutex::new(Arc::clone(voice_manager)))
+                )
+            }
+        }
+        Self {
+            client,
             gemini_function_channel,
             alarm_channel,
         }
