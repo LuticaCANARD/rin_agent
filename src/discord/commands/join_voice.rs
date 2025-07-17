@@ -55,6 +55,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("Join to Voice Channel")
+    CreateCommand::new("join_voice")
       .description("Join a voice channel to User")
 }

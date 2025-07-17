@@ -134,7 +134,11 @@ fn make_message_embed(title: &str, description: &str) -> CreateEmbed {
 async fn register_commands(ctx: Context, guild_id: GuildId) {
     // Register commands here
     let commands = USING_COMMANDS.clone();
-    guild_id.set_commands(&ctx.http, commands.clone()).await.unwrap();
+    LOGGER.log(LogLevel::Info, &format!("Registering commands for guild: {}", guild_id));
+    if let Err(err) = ctx.http.create_guild_commands(guild_id, &commands.clone()).await {
+        LOGGER.log(LogLevel::Error, &format!("Failed to register commands for guild {}: {:?}", guild_id, err));
+        return;
+    }
 }
 pub struct BotManager {
     client: Client,
@@ -324,8 +328,6 @@ impl EventHandler for Handler {
                 ctx.http.delete_guild_command(guild_id, command.id).await.unwrap();
             }
         }
-
-
         for guild in &gids {
             let guild_id = GuildId::new(guild.guild_id as u64);
             register_commands(ctx.clone(), guild_id).await;

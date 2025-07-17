@@ -16,5 +16,5 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("repo").description("Show repo information")
+    CreateCommand::new("lutica_repo").description("Show repo information")
 }

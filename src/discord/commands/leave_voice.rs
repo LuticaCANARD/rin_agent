@@ -14,5 +14,5 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("ping").description("A ping command")
+    CreateCommand::new("leave_voice").description("A leave voice command")
 }
