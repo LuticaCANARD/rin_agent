@@ -1,7 +1,12 @@
 use entity::tb_alarm_model;
+use entity::tb_discord_guilds;
 use rs_ervice::RSContext;
 use rs_ervice::RSContextBuilder;
 use rs_ervice::RSContextService;
+use sea_orm::EntityOrSelect;
+use sea_orm::EntityTrait;
+use sea_orm::ModelTrait;
+use sea_orm::QuerySelect;
 use serenity::all::CreateCommand;
 use serenity::all::CreateEmbed;
 use serenity::all::CreateEmbedFooter;
@@ -39,6 +44,7 @@ use crate::libs::thread_pipelines::AsyncThreadPipeline;
 use crate::libs::thread_pipelines::GeminiChannelResult;
 use crate::libs::thread_pipelines::GEMINI_FUNCTION_EXECUTION_ALARM;
 use crate::libs::thread_pipelines::SCHEDULE_TO_DISCORD_PIPELINE;
+use crate::model::db::driver::DB_CONNECTION_POOL;
 use crate::service::discord_error_msg::send_additional_log;
 use crate::service::discord_error_msg::send_debug_error_log;
 use crate::service::voice_session_manager;
@@ -303,18 +309,27 @@ impl EventHandler for Handler {
     //https://github.com/serenity-rs/serenity/blob/current/examples/e14_slash_commands/src/main.rs
     async fn ready(&self, ctx: Context, _ready: Ready) {
         // Delete remaining commands and register new ones
-        
-        // Register commands here
-        let _guild_id:u64 = 1026747872508653568; // Replace with your guild ID
-        
-        let guild_id = GuildId::new(_guild_id);
-        // let guild = ctx.http.get_guild(guild_id).await.unwrap();
-        let commands = ctx.http.get_guild_commands(guild_id).await.unwrap();
-        for command in commands {
-            ctx.http.delete_guild_command(guild_id, command.id).await.unwrap();
+        let db = DB_CONNECTION_POOL.get().expect("Database connection not initialized");
+
+        let gids = tb_discord_guilds::Entity::find()
+            .select()
+            .column(tb_discord_guilds::Column::GuildId)
+            .into_model::<tb_discord_guilds::Model>()
+            .all(db).await.unwrap();
+
+        for guild in &gids {
+            let guild_id = GuildId::new(guild.guild_id as u64);
+            let commands = ctx.http.get_guild_commands(guild_id).await.unwrap();
+            for command in commands {
+                ctx.http.delete_guild_command(guild_id, command.id).await.unwrap();
+            }
         }
-        // Register commands
-        register_commands(ctx.clone(), guild_id).await;
+
+
+        for guild in &gids {
+            let guild_id = GuildId::new(guild.guild_id as u64);
+            register_commands(ctx.clone(), guild_id).await;
+        }
         LOGGER.log(LogLevel::Info, "Discord > Bot is ready!");
     }
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
