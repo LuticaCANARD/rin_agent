@@ -112,9 +112,9 @@ macro_rules! define_lazy_static {
 
 define_lazy_static!(USING_COMMANDS, USING_ACTIVATE_COMMANDS, 
     [
-        ping,
+        lping,
         gemini_query,
-        repo,
+        lutica_repo,
         join_voice,
         leave_voice
     ]
@@ -348,7 +348,7 @@ impl EventHandler for Handler {
     async fn guild_delete(&self, ctx: Context, guild: UnavailableGuild, full_guild: Option<Guild>) {
         LOGGER.log(LogLevel::Info, &format!("Guild deleted: {:?}", guild.id));
         let guild_id = guild.id;
-        let commands = ctx.http.get_guild_commands(guild_id).await.unwrap();
+        let commands: Vec<Command> = ctx.http.get_guild_commands(guild_id).await.unwrap();
         for command in commands {
             ctx.http.delete_guild_command(guild_id, command.id).await.unwrap();
         }

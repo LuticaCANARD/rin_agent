@@ -1,5 +1,5 @@
-pub mod ping;
+pub mod lping;
 pub mod gemini_query;
-pub mod repo;
+pub mod lutica_repo;
 pub mod join_voice;
 pub mod leave_voice;
