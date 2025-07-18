@@ -212,7 +212,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                     _ => None,
                 }
             } else {
-                Some(true)
+                Some(false)
             };
 
             let send_msgs:Vec<Message> = send_split_msg(_ctx, 
@@ -392,7 +392,7 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(
                 CommandOptionType::Boolean,
                 "show_thought",
-                "생각을 표시할지 선택하세요 (기본값: true)",
+                "생각을 표시할지 선택하세요 (기본값: false)",
             )
             .required(false)
         )
@@ -759,7 +759,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         Some(calling_msg.clone()),
         false,
         context_using_pro,
-        show_thought.unwrap_or(true)
+        show_thought.unwrap_or(false)
     ).await;
     typing.stop();
     let mut image_id:Option<i64> = None;
