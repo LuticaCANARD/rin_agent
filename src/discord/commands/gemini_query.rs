@@ -221,7 +221,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 response.clone(),
                 None,true,
                 use_pro,
-                show_thought.unwrap_or(true)
+                show_thought.unwrap_or(false)
             ).await;
             typing.stop();
 
@@ -303,7 +303,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                     _ => None,
                 }
             } else {
-                Some(true)
+                Some(false)
             };
 
             let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
