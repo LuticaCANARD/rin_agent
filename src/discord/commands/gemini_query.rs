@@ -367,6 +367,14 @@ pub fn register() -> CreateCommand {
         )
         .add_option(
             CreateCommandOption::new(
+                CommandOptionType::Boolean,
+                "show_thought",
+                "생각을 표시할지 선택하세요 (기본값: true)",
+            )
+            .required(false)
+        )
+        .add_option(
+            CreateCommandOption::new(
                 CommandOptionType::Integer,
                 "thinking_bought",
                 "Thinking Bought",

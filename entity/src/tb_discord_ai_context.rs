@@ -16,6 +16,7 @@ pub struct Model {
     pub cache_key: Option<String>,
     pub cache_created_at: DateTimeWithTimeZone,
     pub cache_expires_at: DateTimeWithTimeZone,
+    pub show_thought: Option<bool>
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

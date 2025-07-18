@@ -9,9 +9,9 @@ impl MigrationTrait for Migration {
 
         manager.alter_table(
             Table::alter()
-                .table(TbAiContext::Table)
+                .table(TbDiscordAiContext::Table)
                 .add_column(
-                    ColumnDef::new(TbAiContext::ShowThought)
+                    ColumnDef::new(TbDiscordAiContext::ShowThought)
                         .boolean()
                         .not_null()
                         .default(true) // Default to true if no value is provided
@@ -27,8 +27,8 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
-                    .table(TbAiContext::Table)
-                    .drop_column(TbAiContext::ShowThought)
+                    .table(TbDiscordAiContext::Table)
+                    .drop_column(TbDiscordAiContext::ShowThought)
                     .to_owned(),
             )
             .await
@@ -39,7 +39,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(DeriveIden)]
-enum TbAiContext {
+enum TbDiscordAiContext {
     Table,
     Id,
     ShowThought

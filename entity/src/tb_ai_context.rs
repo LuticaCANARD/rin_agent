@@ -16,7 +16,6 @@ pub struct Model {
     pub channel_id: i64,
     pub by_bot: bool,
     pub image_file_id: Option<i64>,
-    pub show_though: Option<bool>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
