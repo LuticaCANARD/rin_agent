@@ -76,7 +76,7 @@ fn context_process(origin:&PastQuery) -> GeminiChatChunk {
         user_id: Some(origin.0.user_id.to_string()),
     }
 }
-async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool,use_pro:bool)->Vec<Message> {
+async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:User,message_context:GeminiResponse,ref_msg:Option<Message>,need_mention_first:bool,use_pro:bool, show_thought:bool)->Vec<Message> {
     let origin_msg = message_context.discord_msg;
     let mut send_msgs:Vec<Message> = vec![];
 
@@ -103,7 +103,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
             };
             response_msg = generate_message_block(strs,
                 "Gemini API".to_string(), sub_items,
-                used_model,chunk == chuncks.len() - 1
+                used_model,(chunk == chuncks.len() - 1) && show_thought
             );
         }
         if chunk == 0 {
@@ -204,12 +204,24 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 return Err(SerenityError::Other("Gemini API Error"));
             }
             let response = response.unwrap();
+            let show_thought = options.iter().find(|o| o.name == "show_thought");
+            let show_thought = if show_thought.is_some() {
+                let unwarped = show_thought.unwrap().value.clone();
+                match unwarped {
+                    ResolvedValue::Boolean(s) => Some(s),
+                    _ => None,
+                }
+            } else {
+                Some(true)
+            };
+
             let send_msgs:Vec<Message> = send_split_msg(_ctx, 
                 _options.channel_id, 
                 _options.user.clone(),
                 response.clone(),
                 None,true,
-                use_pro
+                use_pro,
+                show_thought.unwrap_or(true)
             ).await;
             typing.stop();
 
@@ -283,6 +295,16 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()))
                 ) 
             };
+            let is_show_thought = options.iter().find(|o| o.name == "show_thought");
+            let is_show_thought = if is_show_thought.is_some() {
+                let unwarped = is_show_thought.unwrap().value.clone();
+                match unwarped {
+                    ResolvedValue::Boolean(s) => Some(s),
+                    _ => None,
+                }
+            } else {
+                Some(true)
+            };
 
             let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
                 guild_id: sea_orm::Set(guild_id as i64),
@@ -293,6 +315,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                 cache_key,
                 cache_created_at,
                 cache_expires_at,
+                show_thought: sea_orm::Set(is_show_thought),
                 ..Default::default()
             })
             .exec_with_returning(&db)
@@ -727,6 +750,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     }
     let ai_response = ai_response.unwrap();
     let guild_id = calling_msg.guild_id.unwrap().get();
+    let show_thought = ai_context_info.show_thought.clone();
     let send_msgs:Vec<Message> = send_split_msg(
         _ctx, 
         calling_msg.channel_id, 
@@ -734,7 +758,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         ai_response.clone(), 
         Some(calling_msg.clone()),
         false,
-        context_using_pro
+        context_using_pro,
+        show_thought.unwrap_or(true)
     ).await;
     typing.stop();
     let mut image_id:Option<i64> = None;
@@ -852,6 +877,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                 cache_key: sea_orm::Set(Some(cache_result.name.clone())),
                 cache_created_at,
                 cache_expires_at,
+                show_thought: sea_orm::Set(ai_context_info.show_thought),
                 ..Default::default()})
             .exec_with_returning(txn)
             .await?;
