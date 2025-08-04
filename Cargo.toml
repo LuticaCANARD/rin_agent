@@ -44,6 +44,6 @@ rs_ervice = {version = "0.1.6" , features=["tokio"] }
 time-macros = "0.2.22"
 chrono = "0.4.41"
 futures = "0.3.31"
-songbird = "0.5.0"
+songbird = { version = "0.5.0", features = ["aac", "mp3", "isomp4", "alac"]}
 bytes = "1.10.1"
 dashmap = "6.1.0"

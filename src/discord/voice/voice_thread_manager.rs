@@ -143,7 +143,4 @@ impl VoiceManager {
         }
     }
 }
-
-// --- 싱글턴 인스턴스 생성 ---
-// LazyLock을 사용하여 프로그램에서 처음 접근할 때 VoiceManager 인스턴스를 단 한 번 생성합니다.
 pub static VOICE_MANAGER: LazyLock<VoiceManager> = LazyLock::new(VoiceManager::default);
