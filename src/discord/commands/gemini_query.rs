@@ -147,60 +147,120 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
 
     let query = query.unwrap().value.clone();
     match query {
-        
         ResolvedValue::String(ref s) => {
+            let mut gemini_client = gemini_client::GeminiClient::new();
             let chatting_channel = _ctx.http.get_channel(_options.channel_id).await.unwrap();
             let typing: serenity::all::Typing = chatting_channel.guild().unwrap().start_typing(&_ctx.http);
-
+            let db = DB_CONNECTION_POOL.get();
+            if db.is_none() {
+                LOGGER.log(LogLevel::Error, "DB Connection Error");
+                return Err(serenity::Error::Other(DISCORD_DB_ERROR));
+            }
+            let guild_id = _options.guild_id.unwrap().get();
+            let db = db.unwrap().clone();
             // Do something with the string value
-            LOGGER.log(LogLevel::Debug, &format!("질문: {}", s));
             let discord_response_message = 
                 CreateInteractionResponseMessage::new()
                     .content(&format!("{}> {}",user_mention(&_options.user), s));
 
             // Send a response to the interaction
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
-            let str_query = s.to_string();
-            let locale =_options.user.locale.clone().unwrap_or("ko".to_string());
+            let response_message = _options.get_response(_ctx).await?;
+            let is_show_thought = options.iter().find(|o| o.name == "show_thought");
+            let is_show_thought = if is_show_thought.is_some() {
+                let unwarped = is_show_thought.unwrap().value.clone();
+                match unwarped {
+                    ResolvedValue::Boolean(s) => Some(s),
+                    _ => None,
+                }
+            } else {
+                Some(false)
+            };
+            let locale = _options.user.locale.clone()
+                .unwrap_or("ko".to_string());
             let user_id = _options.user.id.get();
-            let start_user_msg = GeminiChatChunk{
-                        query: str_query.clone(),
-                        is_bot: false,
-                        image: None,
-                        timestamp: chrono::Utc::now().to_string(),
-                        user_id: Some(user_id.to_string()),
-                        guild_id: Some(_options.guild_id.unwrap().get()),
-                        channel_id: Some(_options.channel_id.get()),
-                    };
             let start_query = get_begin_query(
                 locale.clone(),
                 user_id.to_string(),
                 Some(_options.guild_id.unwrap().get()),
                 Some(_options.channel_id.get())
             );
-            let mut gemini_client = gemini_client::GeminiClient::new();
+            let str_query = s.to_string();
+            let user_query = AiContextEntity::insert(
+                AiContextModel {
+                    user_id: sea_orm::Set(user_id as i64),
+                    context: sea_orm::Set(str_query.clone()),
+                    guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
+                    channel_id: sea_orm::Set(_options.channel_id.get() as i64),
+                    by_bot: sea_orm::Set(false),
+                    ..Default::default()
+            }).exec_with_returning(&db).await.unwrap();
+            let user_said = GeminiChatChunk {
+                query: user_query.context.clone(),
+                is_bot: false,
+                image: None,
+                timestamp: user_query.created_at.to_utc().to_string(),
+                user_id: Some(user_query.user_id.to_string()),
+                guild_id: Some(guild_id),
+                channel_id: Some(_options.channel_id.get()),
+            };
+            let gemini_cached_info = 
+            gemini_client.start_gemini_cache(
+                vec![user_said.clone()], &start_query, use_pro, 600.0
+            ).await;
+
+
+            let make_context = AiContextDiscordEntity::insert(
+            AiContextDiscordModel { // Create a new context
+                guild_id: sea_orm::Set(guild_id as i64),
+                root_msg: sea_orm::Set(user_query.id),
+                parent_context: sea_orm::Set([].to_vec()),
+                using_pro_model: sea_orm::Set(use_pro),
+                thinking_bought: sea_orm::Set(thinking_bought),
+                cache_key: sea_orm::Set(None),
+                cache_created_at: sea_orm::Set(ChronoDateTime::from(chrono::Utc::now())),
+                cache_expires_at: sea_orm::Set(ChronoDateTime::from(chrono::Utc::now())),
+                show_thought: sea_orm::Set(is_show_thought),
+                ..Default::default()
+            })
+            .exec_with_returning(&db)
+            .await
+            .unwrap();
+            
+            let start_user_msg = GeminiChatChunk{
+                query: str_query.clone(),
+                is_bot: false,
+                image: None,
+                timestamp: chrono::Utc::now().to_string(),
+                user_id: Some(user_id.to_string()),
+                guild_id: Some(_options.guild_id.unwrap().get()),
+                channel_id: Some(_options.channel_id.get()),
+            };
             let user_info = Some(
                 DiscordUserInfo {
                     user_id: _options.user.id,
                     username: Some(_options.user.name.clone()),
                     channel_id: _options.channel_id,
+                    context_id: Some(make_context.id),
                 }
             );
-            let response = 
-                            gemini_client
-                            .send_query_to_gemini(
-                                vec![
-                                    start_user_msg.clone()
-                                ],
-                                &start_query,
-                                use_pro,
-                                thinking_bought,
-                                None,
-                                user_info
-                            )
-                            .await;
+            let response = gemini_client
+                .send_query_to_gemini(
+                    vec![
+                        start_user_msg.clone()
+                    ],
+                    &start_query,
+                    use_pro,
+                    thinking_bought,
+                    None,
+                    user_info
+                )
+                .await;
             if response.is_err() {
-                LOGGER.log(LogLevel::Error, &format!("Gemini API Error: {:?}", response));
+                LOGGER.log(LogLevel::Error, 
+                    &format!("Gemini API Error: {:?}", response)
+                );
+                typing.stop();
                 return Err(SerenityError::Other("Gemini API Error"));
             }
             let response = response.unwrap();
@@ -226,60 +286,39 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             typing.stop();
 
             //------- DB Action --------
-            let db = DB_CONNECTION_POOL.get();
-            if db.is_none() {
-                LOGGER.log(LogLevel::Error, "DB Connection Error");
-                return Err(serenity::Error::Other(DISCORD_DB_ERROR));
-            }
-            let guild_id = _options.guild_id.unwrap().get();
-            let db = db.unwrap().clone();
-            let insert_user_and_bot_talk: Vec<tb_ai_context::Model> = AiContextEntity::insert_many(vec![
+
+            let insert_bot_response: tb_ai_context::Model = AiContextEntity::insert(
                 AiContextModel {
-                    user_id: sea_orm::Set(user_id as i64),
-                    context: sea_orm::Set(str_query),
-                    guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
-                    channel_id: sea_orm::Set(_options.channel_id.get() as i64),
-                    by_bot: sea_orm::Set(false),
-                    ..Default::default()
-                },AiContextModel {
                     user_id: sea_orm::Set(user_id as i64),
                     context: sea_orm::Set(response.discord_msg),
                     guild_id: sea_orm::Set(guild_id as i64),
                     channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                     by_bot: sea_orm::Set(true),
                     ..Default::default()
-                }])
-                .exec_with_returning_many(&db)
+                })
+                .exec_with_returning(&db)
                 .await
                 .unwrap();
-            LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", insert_user_and_bot_talk));
-
-            let user_said = GeminiChatChunk {
-                query: insert_user_and_bot_talk[0].context.clone(),
-                is_bot: false,
-                image: None,
-                timestamp: insert_user_and_bot_talk[0].created_at.to_utc().to_string(),
-                user_id: Some(insert_user_and_bot_talk[0].user_id.to_string()),
-                guild_id: Some(guild_id),
-                channel_id: Some(_options.channel_id.get()),
-            };
+            LOGGER.log(LogLevel::Debug, &format!("DB Inserted: {:?}", insert_bot_response));
             let bot_said = GeminiChatChunk {
-                query: insert_user_and_bot_talk[1].context.clone(),
+                query: insert_bot_response.context.clone(),
                 is_bot: true,
                 image: None,
-                timestamp: insert_user_and_bot_talk[1].created_at.to_utc().to_string(),
-                user_id: Some(insert_user_and_bot_talk[1].user_id.to_string()),
+                timestamp: insert_bot_response.created_at.to_utc().to_string(),
+                user_id: Some(insert_bot_response.user_id.to_string()),
                 guild_id: Some(guild_id),
                 channel_id: Some(_options.channel_id.get()),
             };
-
-            let gemini_cached_info = gemini_client.start_gemini_cache(
-                vec![user_said, bot_said], &start_query, use_pro, 600.0
+            let gemini_cached_info = 
+gemini_client.start_gemini_cache(
+                vec![user_said,bot_said], &start_query, use_pro, 600.0
             ).await;
             let cache_key = if gemini_cached_info.is_err() {
                 sea_orm::Set(None)
             } else {
-                sea_orm::Set(Some(gemini_cached_info.clone().unwrap().name.clone()))
+                sea_orm::Set(
+                    Some(gemini_cached_info.clone().unwrap().name.clone())
+                )
             };
             let cache_created_at = if gemini_cached_info.is_err() {
                 sea_orm::Set(ChronoDateTime::from(chrono::Utc::now()))
@@ -295,42 +334,32 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
                         .unwrap_or_else(|_| ChronoDateTime::from(chrono::Utc::now()))
                 ) 
             };
-            let is_show_thought = options.iter().find(|o| o.name == "show_thought");
-            let is_show_thought = if is_show_thought.is_some() {
-                let unwarped = is_show_thought.unwrap().value.clone();
-                match unwarped {
-                    ResolvedValue::Boolean(s) => Some(s),
-                    _ => None,
+            let update_context = AiContextDiscordEntity::update(
+                AiContextDiscordModel {
+                    id: sea_orm::Set(make_context.id),
+                    cache_key,
+                    cache_created_at,
+                    cache_expires_at,
+                    guild_id: sea_orm::Set(make_context.guild_id as i64),
+                    root_msg: sea_orm::Set(make_context.root_msg),
+                    parent_context: sea_orm::Set(make_context.parent_context),
+                    using_pro_model: sea_orm::Set(make_context.using_pro_model),
+                    thinking_bought: sea_orm::Set(make_context.thinking_bought),
+                    show_thought: sea_orm::Set(make_context.show_thought),
                 }
-            } else {
-                Some(false)
-            };
-
-            let make_context = AiContextDiscordEntity::insert(AiContextDiscordModel { // Create a new context
-                guild_id: sea_orm::Set(guild_id as i64),
-                root_msg: sea_orm::Set(insert_user_and_bot_talk.get(0).unwrap().id),
-                parent_context: sea_orm::Set([].to_vec()),
-                using_pro_model: sea_orm::Set(use_pro),
-                thinking_bought: sea_orm::Set(thinking_bought),
-                cache_key,
-                cache_created_at,
-                cache_expires_at,
-                show_thought: sea_orm::Set(is_show_thought),
-                ..Default::default()
-            })
-            .exec_with_returning(&db)
-            .await
-            .unwrap();
-            LOGGER.log(LogLevel::Debug, &format!("DB Inserted with Context: {:?}", make_context));
+            ).exec(&db).await.unwrap();
+            LOGGER.log(LogLevel::Debug, 
+                &format!("DB Inserted with Context: {:?}", update_context)
+            );
             let _insert_context = tb_context_to_msg_id::Entity::insert_many(
                 vec![
                     tb_context_to_msg_id::ActiveModel {
-                    ai_msg: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
+                    ai_msg: sea_orm::Set(user_query.id as i64),
                     ai_context: sea_orm::Set(make_context.id as i64),
                     ..Default::default()
                 },
                     tb_context_to_msg_id::ActiveModel {
-                    ai_msg: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
+                    ai_msg: sea_orm::Set(insert_bot_response.id as i64),
                     ai_context: sea_orm::Set(make_context.id as i64),
                     ..Default::default()
                 }]
@@ -341,13 +370,13 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
             // 유저가 디코에 보낸 질문
             let insert_user_msg_to_context = AiContextDiscordMessageModel {
                 discord_message: sea_orm::Set(_options.id.get() as i64),
-                ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[0].id as i64),
+                ai_msg_id: sea_orm::Set(make_context.id as i64),
                 ..Default::default()
             };
             let ai_context_discord_messages = send_msgs.iter().map(|msg| { // AI가 디코에 보낸 답
                 AiContextDiscordMessageModel {
                     discord_message: sea_orm::Set(msg.id.get() as i64),
-                    ai_msg_id: sea_orm::Set(insert_user_and_bot_talk[1].id as i64),
+                    ai_msg_id: sea_orm::Set(insert_bot_response.id as i64),
                     ..Default::default()
                 }
             }).collect::<Vec<_>>();
@@ -468,14 +497,23 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     // 한 번의 쿼리로 현재 및 부모 컨텍스트 모두 조회
     let context_ids = {
         let mut ids = ai_context_id.to_string();
-        if let Some(ai_context_info) = tb_discord_ai_context::Entity::find_by_id(ai_context_id)
+        if let Ok(ai_context_info )= tb_discord_ai_context::Entity::find_by_id(ai_context_id)
             .one(&db)
             .await
-            .unwrap()
         {
+            if ai_context_info.is_none() {
+                LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
+                typing.stop();
+                return Err("AI Context가 없습니다.".to_string());
+            }
+            let ai_context_info = ai_context_info.unwrap();
             let mut parent_ids = ai_context_info.parent_context.clone();
             parent_ids.push(ai_context_info.id as i64);
             ids = parent_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+        } else {
+            LOGGER.log(LogLevel::Error, "AI Context가 없습니다.");
+            typing.stop();
+            return Err("AI Context가 없습니다.".to_string());
         }
         ids
     };
@@ -718,6 +756,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
             user_id: calling_msg.author.id,
             username: Some(calling_msg.author.name.clone()),
             channel_id: calling_msg.channel_id,
+            context_id: Some(ai_context_info.id as i64),
         }
     );
 

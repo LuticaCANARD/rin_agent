@@ -107,7 +107,9 @@ async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>,info:Option<
     let user_id = info.user_id;
     let channel_id = info.channel_id;
 
-    let alarm_item = ScheduleRequest{start, end, name, description, repeat,sender:user_id,channel_id,guild_id:None};
+    let alarm_item = ScheduleRequest{start, end, name, description, 
+        repeat,sender:user_id,channel_id,
+        guild_id:None,context_id:info.context_id};
     get_rin_services()
         .await
         .call::<ScheduleService>()

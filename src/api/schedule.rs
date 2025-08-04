@@ -20,6 +20,7 @@ pub struct ScheduleRequest {
     pub channel_id: ChannelId,
     pub description: Option<String>,
     pub repeat: Option<ScheduleRepeatRequest>,
+    pub context_id: Option<i64>,
 }
 pub struct ScheduleRepeatRequest {
     pub repeat_type: String,

@@ -9,7 +9,6 @@ use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, G
 use reqwest::Client;
 use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
-use serenity::json;
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
@@ -129,17 +128,26 @@ pub fn generate_gemini_cache_setting(
     }
 }
 
-fn generate_value_to_content(value: &Value) -> GeminiParts {
+fn generate_value_to_content(value: &Value) -> Result<GeminiParts, String> {
     if let Some(v) = value.get("text") {
-        GeminiParts::new().set_text(v.as_str().unwrap_or("").to_string())
+        Ok(GeminiParts::new().set_text(v.as_str().unwrap_or("").to_string()))
     } else if let Some(v) = value.get("inlineData") {
         let inline_data = serde_json::from_value::<GeminiInlineBlob>(v.clone()).unwrap();
-        GeminiParts::new().set_inline_data(inline_data)
+        Ok(GeminiParts::new().set_inline_data(inline_data))
     }  else if let Some(v) = value.get("functionCall") {
-        let function_call = v.as_object().unwrap();
-        let name = function_call.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let function_call = match v.as_object() {
+            Some(obj) => obj,
+            None => Err(()).expect("Expected functionCall to be an object")
+        };
+        if function_call.get("name").is_none() {
+            return Err("Function call without name".to_string());
+        }
+        let name = function_call.get("name").and_then(|n| n.as_str())
+            .unwrap_or_else(|| {
+                "There is no function name in the function call"
+            });
         let args = function_call.get("args").cloned().unwrap_or(Value::Null);
-        GeminiParts::new().set_function_call(
+        Ok(GeminiParts::new().set_function_call(
             GeminiFunctionCall {
                 name: name.to_string(),
                 id: None,
@@ -148,30 +156,31 @@ fn generate_value_to_content(value: &Value) -> GeminiParts {
                     .into_iter().collect::<BTreeMap<_, _>>())
                 }
             )
+        )
     } else if let Some(v) = value.get("functionResponse") {
         let function_res = serde_json::from_value::<GeminiFunctionResponse>(v.clone()).unwrap();
-        GeminiParts::new().set_function_response(
+        Ok(GeminiParts::new().set_function_response(
             function_res.clone()
-        )
+        ))
     } else if let Some(v) = value.get("fileData") {
         let inline_data = serde_json::from_value::<GeminiFileData>(v.clone()).unwrap();
-        GeminiParts::new().set_file_data(inline_data)
-
+        Ok(GeminiParts::new().set_file_data(inline_data))
     } else if let Some(v) = value.get("executableCode") {
         let code = serde_json::from_value::<GeminiExecutableCode>(v.clone()).unwrap();
-        GeminiParts::new().set_executable_code(
+        Ok(GeminiParts::new().set_executable_code(
             code
-        )
-        
+        ))
     } else if let Some(v) =   value.get("executableCodeResult") {
         let code = serde_json::from_value::<GeminiExecutableCodeResult>(v.clone()).unwrap();
-        GeminiParts::new().set_code_execution_result(
+        Ok(GeminiParts::new().set_code_execution_result(
             code
-        )
-    }else if let Some(v) = value.get("image") {
-        GeminiParts::new().set_image_link(v.as_str().unwrap_or("").to_string())
+        ))
+    } else if let Some(v) = value.get("image") {
+        Ok(GeminiParts::new().set_image_link(v.as_str().unwrap_or_else(|| {
+            "There is no image link in the image data"
+        }).to_string()))
     } else {
-        GeminiParts::new().set_text(value.to_string())
+        Ok(GeminiParts::new().set_text(value.to_string()))
     }
 
 }
@@ -187,13 +196,15 @@ pub trait GeminiClientTrait {
         cached:Option<String>,
         user_info:Option<DiscordUserInfo>
 ) -> Result<GeminiResponse, String>;
-    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,cached:Option<String>,is_start:bool) -> Value {
+    fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,
+        begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,
+        cached:Option<String>,is_start:bool) -> Value {
         let generation_conf = if thinking_bought.is_some() {
             let mut origin = GENERATE_CONF.clone();
             origin.thinking_config = Some(
                 ThinkingConfig {
                     include_thoughts: true,
-                    thinking_budget: thinking_bought.unwrap(),
+                    thinking_budget: thinking_bought.unwrap_or(1000),
                 }
             );
             origin
@@ -275,7 +286,9 @@ impl GeminiClientTrait for GeminiClient {
                     },
                     parts: c.get("parts").and_then(|p| p.as_array())
                         .map_or_else(|| vec![GeminiParts::new().set_text(c.to_string())], |parts| {
-                            parts.iter().map(generate_value_to_content).collect()
+                            parts.iter().map(generate_value_to_content).filter_map(
+                                |part| part.ok()
+                            ).collect()
                         }),
                 }
             }).collect::<Vec<GeminiContents>>()

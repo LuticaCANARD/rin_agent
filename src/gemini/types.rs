@@ -129,7 +129,8 @@ impl Default for GeminiBotTools{
 pub struct DiscordUserInfo {
     pub user_id: UserId,
     pub username: Option<String>,
-    pub channel_id: ChannelId
+    pub channel_id: ChannelId,
+    pub context_id: Option<i64>, // AI context ID
 }
 
 pub fn generate_input_to_dict(input: GeminiBotToolInput) -> (String, GeminiBotToolInput) {

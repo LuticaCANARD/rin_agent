@@ -35,7 +35,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
         } else {
             return Err(serenity::Error::Other("You need to be in a voice channel to use this command."));
         }
-    }; // 이 블록이 끝나면 `guild`와 `channel`에 대한 캐시 참조가 사라집니다.
+    };
 
     if let Some(channel_id) = channel_id_to_join {
       let map = json!({
