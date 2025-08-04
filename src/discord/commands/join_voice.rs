@@ -1,60 +1,80 @@
-use serde_json::json;
 use serenity::builder::*;
-use serenity::model::{prelude::*, voice};
+use serenity::model::prelude::*;
 use serenity::prelude::*;
+use songbird::SerenityInit; // songbird 임포트
 
-pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String, serenity::Error> {
+use crate::{discord::utils::GuildCommandResponse, libs::logger::{LogLevel, LOGGER}};
+
+pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildCommandResponse, serenity::Error> {
     let guild_id = match _options.guild_id {
         Some(id) => id,
-        None => return Err(serenity::Error::Other("Command must be used in a guild")),
+        None => return Err(
+            serenity::Error::Other(" 길드 ID가 제공되지 않았습니다."),
+        ),
     };
-
-    // .await 전에 필요한 정보를 모두 추출하기 위한 블록
-    let channel_id_to_join = {
-        let guild = match _ctx.cache.guild(guild_id) {
-            Some(g) => g,
-            None => return Err(serenity::Error::Other("Guild not found in cache")),
-        };
-
+    // .await 전에 필요한 모든 정보를 추출합니다.
+    // 이 블록 안에서는 .await를 사용하지 않습니다.
+    let (channel_id_to_join, user_name) = {
+        let guild = _ctx.cache.guild(guild_id).unwrap();
+        // 길드 캐시의 voice_states에서 사용자 ID로 직접 음성 채널을 찾습니다.
+        // 이 방법이 모든 채널과 멤버를 순회하는 것보다 훨씬 효율적입니다.
         let channel_id = guild
             .voice_states
             .get(&_options.user.id)
-            .and_then(|vs| vs.channel_id);
+            .and_then(|voice_state| voice_state.channel_id);
+        if channel_id.is_none() {
+            LOGGER.log(LogLevel::Error, "사용자가 음성 채널에 연결되어 있지 않습니다.");
+            drop(guild);
+            let res = GuildCommandResponse{
+                content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                    .content("사용자가 음성 채널에 연결되어 있지 않습니다.")),
+                do_not_send: false,
 
-        if let Some(id) = channel_id {
-            // 채널이 음성 채널인지 확인
-            if let Some(channel) = guild.channels.get(&id) {
-                if channel.kind == ChannelType::Voice {
-                    Some(id) // 음성 채널 ID 반환
-                } else {
-                    return Err(serenity::Error::Other("You are not in a voice channel."));
-                }
-            } else {
-                None // 채널 정보를 찾을 수 없음
-            }
-        } else {
-            return Err(serenity::Error::Other("You need to be in a voice channel to use this command."));
+            };
+            return Ok(res);
         }
+        let connect_to = channel_id.unwrap();
+        // user_name도 미리 복사해 둡니다.
+        (connect_to, _options.user.name.clone())
     };
 
-    if let Some(channel_id) = channel_id_to_join {
-      let map = json!({
-        "channel_id": channel_id.to_string(),
-      });
-      _ctx
-        .http
-        .edit_voice_state_me(guild_id, &map)
-        .await?;
+    LOGGER.log(
+        LogLevel::Info,
+        &format!("사용자 {}의 음성 채널 {}에 참여 시도 중", user_name, channel_id_to_join),
+    );
+    // songbird 관리자를 가져옵니다.
+    let manager = songbird::get(_ctx).await;
+    let manager = match manager {
+        Some(m) => m,
+        None => return Ok(GuildCommandResponse{
+            content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .content("음성 채널 관리자에 접근할 수 없습니다.")),
+            do_not_send: false,
+        }),
+    };
 
-        // 음성 채널에 성공적으로 참여했음을 알리는 메시지 반환
-        return Ok(format!("Joined voice channel!"))
+
+    // `join`을 사용하여 음성 채널에 연결합니다.
+    if manager.join(guild_id, channel_id_to_join).await.is_ok() {
+        LOGGER.log(LogLevel::Info, &format!("음성 채널 {}에 성공적으로 참여했습니다.", channel_id_to_join));
+        Ok(GuildCommandResponse{
+            content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .content("음성 채널에 성공적으로 참여했습니다!")),
+            do_not_send: false,
+
+        })
     } else {
-        // 이 경우는 이미 위에서 처리되었지만, 만약을 위해 남겨둡니다.
-        Err(serenity::Error::Other("Could not find a voice channel to join."))
+        LOGGER.log(LogLevel::Error, &format!("음성 채널 {} 참여에 실패했습니다.", channel_id_to_join));
+        Ok(GuildCommandResponse{
+            content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .content("음성 채널에 참여하는 데 실패했습니다.")),
+            do_not_send: false,
+
+        })
     }
 }
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("join_voice")
-      .description("Join a voice channel to User")
+        .description("사용자가 있는 음성 채널에 참여합니다.")
 }

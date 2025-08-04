@@ -24,6 +24,7 @@ use serenity::async_trait;
 use serenity::model::gateway::Ready;
 use serenity::model::gateway::GatewayIntents;
 use serenity::model::application::{Command, Interaction};
+use songbird::SerenityInit;
 use sqlx::types::chrono;
 use tokio::sync::watch::Receiver;
 use std::cell::OnceCell;
@@ -76,10 +77,16 @@ macro_rules! get_command_function {
                 match name.as_str() {
                     $(
                         stringify!($module) => {
-                            if let Err(err) = crate::discord::commands::$module::run(&context, &interaction).await {
+                            let response = crate::discord::commands::$module::run(&context, &interaction).await;
+                            if let Err(err) = response {
                                 LOGGER.log(LogLevel::Error, &format!("Discord > Error executing command {}: {:?}", stringify!($module), err));
                                 return Err(err);
                             }
+                            let response = response.unwrap();
+                            if response.clone().do_not_send {
+                                return Ok("Command executed successfully, but response was suppressed.".to_string());
+                            }
+                            interaction.create_response(context, response.content).await?;
                             let response = format!("Discord > Command {} executed successfully!", stringify!($module));
                             LOGGER.log(LogLevel::Info, &response);
                             Ok(response)
@@ -167,8 +174,10 @@ pub async fn get_discord_service() -> &'static RSContext {
 impl BotManager{
     pub async fn new() -> Self {
         let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-        let intents = GatewayIntents::GUILD_MESSAGES
+        let intents = GatewayIntents::GUILDS
+            |GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::DIRECT_MESSAGES
+            | GatewayIntents::GUILD_VOICE_STATES // 음성 상태를 위해 필수!
             | GatewayIntents::MESSAGE_CONTENT;
         let gemini_function_channel = &GEMINI_FUNCTION_EXECUTION_ALARM.receiver;
         let alarm_channel = &SCHEDULE_TO_DISCORD_PIPELINE.receiver;
@@ -177,6 +186,7 @@ impl BotManager{
                 .voice_manager(
                     VoiceHandler {}
                 )
+                .register_songbird()
                 .await
                 .expect("Error creating client");
         {
@@ -314,7 +324,9 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, _ready: Ready) {
         // Delete remaining commands and register new ones
         let db = DB_CONNECTION_POOL.get().expect("Database connection not initialized");
+        let guilds = ctx.cache.guilds().len();
 
+        println!("Guilds in the Cache: {}", guilds);
         let gids = tb_discord_guilds::Entity::find()
             .select()
             .column(tb_discord_guilds::Column::GuildId)

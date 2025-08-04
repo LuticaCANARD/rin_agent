@@ -16,6 +16,7 @@ use serenity::model::{guild, prelude::*, user};
 use serenity::prelude::*;
 use chrono::{DateTime as ChronoDateTime, Utc, Duration as ChronoDuration};
 use crate::discord::constant::DISCORD_DB_ERROR;
+use crate::discord::utils::GuildCommandResponse;
 use crate::gemini::gemini_client::{self, GeminiCacheInfo, GeminiClientTrait};
 use crate::gemini::types::{DiscordUserInfo, GeminiChatChunk, GeminiImageInputType, GeminiResponse};
 use crate::gemini::utils::upload_image_to_gemini;
@@ -116,7 +117,7 @@ async fn send_split_msg(_ctx: &Context,channel_context:ChannelId,origin_user:Use
     send_msgs
 }
 
-pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String, serenity::Error> {
+pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildCommandResponse, serenity::Error> {
     let options = _options.data.options();
     let query = options.iter().find(|o| o.name == "query");
     let use_pro = options.iter().find(|o| o.name == "use_pro");
@@ -131,7 +132,12 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<String
     };
     if query.is_none() {
         _options.create_response(_ctx,CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("질문을 입력하세요"))).await?;
-        return Ok("질문을 입력하세요".to_string());
+        return Ok(
+            GuildCommandResponse {
+                content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("질문을 입력하세요")),
+                do_not_send: false,
+            }
+        );
     }
     let thinking_bought = options.iter().find(|o| o.name == "thinking_bought");
     let thinking_bought = if thinking_bought.is_some() {
@@ -386,19 +392,26 @@ gemini_client.start_gemini_cache(
                 .await
                 .unwrap();
             // 끝.
-            return Ok("ok".to_string());
+            return Ok(
+                GuildCommandResponse {
+                    content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                        .content("질문이 성공적으로 처리되었습니다!")),
+                    do_not_send: false,
+
+                }
+            );
 
         },
         _ => {
             // Handle other types if necessary
             LOGGER.log(LogLevel::Error, "질문이 잘못되었습니다.");
-            _options.create_response(_ctx,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                    .content("질문이 잘못되었습니다.")
-                )
-            ).await?;
-            return Ok("질문이 잘못되었습니다.".to_string());
+            return Ok(
+                GuildCommandResponse {
+                    content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                        .content("질문이 잘못되었습니다.")),
+                    do_not_send: false,
+                }
+            );
         }
     }
 }
