@@ -32,11 +32,13 @@ async fn web_connect(params: HashMap<String, GeminiBotToolInputValue>) -> Result
 
     let html_content = response.text().await.map_err(|e| e.to_string())?;
 
-    Ok(GeminiActionResult {
+    Ok(
+        GeminiActionResult {
         result_message: "Web page content fetched successfully.".to_string(),
         result: json!({ "html": html_content }),
         error: None,
         show_user: Some(format!("웹 페이지 {} 의 HTML 내용을 가져왔습니다.", url)),
+        ..Default::default()
     })
 }
 

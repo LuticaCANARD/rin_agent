@@ -21,6 +21,7 @@ async fn set_alarm(params : HashMap<String,GeminiBotToolInputValue>) -> Result<G
             }),
             error: None,
             show_user: None,
+            ..Default::default()
         }
     )
     

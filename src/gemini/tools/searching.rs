@@ -42,6 +42,7 @@ async fn searching(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
                 result: json!({}),
                 error: Some(why.to_string()),
                 show_user: Some("검색 중 오류가 발생했습니다.".to_string()),
+                ..Default::default()
             }
         )
     }
@@ -53,6 +54,7 @@ async fn searching(params: HashMap<String, GeminiBotToolInputValue>) -> Result<G
             result: json!(google_searching_result),
             error: None,
             show_user: Some(format!("{} 를 검색하였습니다.", query).to_string()),
+            ..Default::default()
         }
     )
 }
