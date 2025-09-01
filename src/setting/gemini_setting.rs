@@ -15,6 +15,7 @@ use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_f
 
 pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro";
 pub const GEMINI_MODEL_FLASH: &str = "gemini-2.5-flash"; 
+pub const GEMINI_NANO_BANANA: &str = "gemini-2.5-flash-image-preview";
 
 pub static MANAGER_ID: LazyLock<i64> = LazyLock::new(|| {
     env::var("MANAGER_ID").unwrap_or_default().parse::<i64>().unwrap_or(0)
@@ -248,7 +249,8 @@ pub static GEMINI_BOT_TOOLS: LazyLock<hash_map::HashMap<String, GeminiBotTools>>
         set_alarm,
         discord_response,
         searching,
-        web_connect
+        web_connect,
+        image_generate
     )
     .into_iter()
     .map(|tool| (tool.name.clone(), tool))

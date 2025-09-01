@@ -14,7 +14,8 @@ use std::collections::{BTreeMap, HashMap};
 use sqlx::types::time;
 use gemini_live_api::types::enums::GeminiSchemaFormat;
 
-async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>,info:Option<DiscordUserInfo>) -> Result<GeminiActionResult, String> {
+async fn set_alarm(params: HashMap<String, GeminiBotToolInputValue>,info:Option<DiscordUserInfo>) 
+    -> Result<GeminiActionResult, String> {
     let time = params.get("time");
     if time.is_none() {
         return Err("Missing 'time' parameter".to_string());

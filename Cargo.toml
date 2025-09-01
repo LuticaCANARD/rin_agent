@@ -27,15 +27,15 @@ gemini_live_api= { path = "gemini_live_api" }
 dotenv = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-postgres = "*"
-curl = "0.4.47"
+curl = "0.4.49"
 lazy_static = "1.5.0"
 sqlx = { version = "0.8.6", features = ["runtime-tokio-native-tls", "postgres"] }
-reqwest = "0.12.18"
-serde_json = "1.0.140"
+reqwest = "0.12.23"
+serde_json = "1.0.143"
 serde ={ version = "1.0.219", features = ["derive"] }
 base64 = "0.22.1"
-libc = "0.2.172"
-redis = { version = "0.31.0", features = ["tokio-comp","r2d2"] }
+libc = "0.2.175"
+redis = { version = "0.32.5", features = ["tokio-comp","r2d2"] }
 r2d2 = "0.8.10"
 tokio-tungstenite = { version ="0.26.2", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3.31"
@@ -44,6 +44,6 @@ rs_ervice = {version = "0.1.6" , features=["tokio"] }
 time-macros = "0.2.22"
 chrono = "0.4.41"
 futures = "0.3.31"
-songbird = { version = "0.5.0", features = ["aac", "mp3", "isomp4", "alac"]}
+songbird = { version = "0.5.0", features = ["serenity"] }
 bytes = "1.10.1"
 dashmap = "6.1.0"
