@@ -9,6 +9,8 @@ use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, G
 use reqwest::Client;
 use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
+use serenity::all::{ChannelId, CreateMessage};
+use crate::discord::discord_bot_manager::{get_discord_service, BotManager};
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
@@ -182,7 +184,6 @@ fn generate_value_to_content(value: &Value) -> Result<GeminiParts, String> {
     } else {
         Ok(GeminiParts::new().set_text(value.to_string()))
     }
-
 }
 
 
@@ -214,12 +215,9 @@ pub trait GeminiClientTrait {
         let cached_info = cached;
         let ret = if is_start {
             json!({
-            "contents": 
-                query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
-            ,
+            "contents": query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>(),
             "generationConfig": generation_conf,
             "safetySettings": SAFETY_SETTINGS.clone(),
-            
             "toolConfig": {
                 "functionCallingConfig": {
                     "mode": "ANY",
@@ -231,9 +229,7 @@ pub trait GeminiClientTrait {
         })
         } else {
             json!({
-            "contents": 
-                query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>()
-            ,
+            "contents": query.iter().map(generate_gemini_user_chunk).collect::<Vec<_>>(),
             "generationConfig": generation_conf,
             "safetySettings": SAFETY_SETTINGS.clone()
         })
@@ -345,7 +341,7 @@ impl GeminiClientTrait for GeminiClient {
                 .and_then(|contents| contents.as_object())
                 .and_then(|candidates| candidates.get("parts"))
                 .and_then(|parts| parts.as_array());
-
+            let mut response_message_id:Option<u64> = None;
             if let Some(parts) = now_parts {
                 for part in parts {
                     if let Some(fn_call) = part.get("functionCall") {
@@ -369,23 +365,19 @@ impl GeminiClientTrait for GeminiClient {
                                         .filter_map(|item| item.as_str().map(|s| s.to_string()))
                                         .collect());
                             } else {
-
                                 let args = fn_call.get("args")
                                     .and_then(|args| args.as_object())
                                     .cloned()
                                     .unwrap_or_default();
-                                
                                 if let Some(fn_result) = GEMINI_BOT_TOOLS.get(fn_name) {
                                     let fn_args: HashMap<String, GeminiBotToolInputValue> = args.clone().into_iter()
                                         .map(|(k,v)| generate_to_value(k,v))
                                         .collect();
-                                    
                                     integral_content_part.push(make_fncall_result(fn_name.to_string(), args));
                                     let res = (fn_result.action)(fn_args,user_info.clone()).await;
                                     match res {
                                         Ok(result) => {
                                             command_result.push(Ok(result.clone()));
-
                                             integral_content_part.push(make_fncall_result_with_value(
                                                 GeminiFunctionResponse {
                                                     name: fn_name.to_string(),
@@ -394,8 +386,24 @@ impl GeminiClientTrait for GeminiClient {
                                                     will_continue:None,
                                                     scheduling: None,
                                                 }
-                                            ));
-                                        let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
+                                            )
+                                        );
+                                        if(response_message_id.is_none()) {
+                                            let msg = result.clone().result_message;
+                                            let channel = ChannelId::new(begin_query.channel_id.unwrap_or(0));
+                                            let _discord_client = get_discord_service().await;
+                                            let locked = _discord_client.call::<BotManager>().unwrap();
+                                            let discord_client = locked.try_lock().unwrap();
+                                            let sent = discord_client.send_message(channel, CreateMessage::new().content(msg)).await;
+                                            if let Ok(sent_msg) = sent {
+                                                response_message_id = Some(sent_msg.id.get());
+                                            } else {
+                                                send_debug_error_log(
+                                                    format!("Gemini API > Failed to send Discord message for function {}: {:?}", fn_name, sent.err())
+                                                ).await;
+                                            }
+                                        } else {
+                                            let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
                                             GeminiChannelResult{
                                                 message: result.clone(),
                                                 channel_id: begin_query.channel_id.unwrap().to_string(),
@@ -403,6 +411,8 @@ impl GeminiClientTrait for GeminiClient {
                                                 guild_id: begin_query.guild_id.unwrap().to_string(),
                                                 message_id: fn_name.to_string(),
                                             });
+                                        }
+                                        
                                         },
                                         Err(e) => {
                                             let error_message = e.to_string();
@@ -413,7 +423,6 @@ impl GeminiClientTrait for GeminiClient {
                                             integral_content_part.push(make_fncall_error(fn_name.to_string(), error_message));
                                         }
                                     }
-
                                 } else {
                                     command_result.push(Err("Gemini API > Function call not found".to_string()));
                                 }
@@ -472,7 +481,7 @@ impl GeminiClientTrait for GeminiClient {
                         .map_err(|e| e.to_string())?;
                     let response_result = response.text().await.unwrap();
                     let body_jsoned = serde_json::from_str::<Value>(&response_result).unwrap()
-                    .get("candidates")
+                        .get("candidates")
                         .and_then(|candidates| candidates.as_array())
                         .and_then(|candidates| candidates.last())
                         .and_then(|candidates| candidates.as_object())
@@ -537,10 +546,7 @@ impl GeminiClientTrait for GeminiClient {
             "https://generativelanguage.googleapis.com/v1beta/cachedContents?key={}",
             api_key
         );
-
         let start_cache = generate_gemini_cache_setting(query, begin_query, use_pro, ttl);
-
-
         let body = serde_json::to_string(&start_cache).expect("Failed to serialize cache content");
         LOGGER.log(LogLevel::Debug, &format!("Gemini Cache API > Start post Req: {:?}", &body));
         let response = self.net_client

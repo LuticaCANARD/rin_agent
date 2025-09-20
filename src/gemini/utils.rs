@@ -17,7 +17,6 @@ fn generate_gemini_string_from_chunk(chunk: &GeminiChatChunk) -> String {
     time : {} 
     sender : {}
     message : {}
-
     ",
     &chunk.guild_id.unwrap_or(0),
     &chunk.channel_id.unwrap_or(0),

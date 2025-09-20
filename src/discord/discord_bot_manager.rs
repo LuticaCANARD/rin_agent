@@ -109,7 +109,8 @@ macro_rules! define_lazy_static {
             }
         });
 
-        static $activate_commands: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> Pin<Box<dyn Future<Output = Result<String, serenity::Error>> + Send>> + Send + Sync>> = LazyLock::new(|| {
+        static $activate_commands: LazyLock<Box<dyn Fn(String, &Context, &CommandInteraction) -> 
+            Pin<Box<dyn Future<Output = Result<String, serenity::Error>> + Send>> + Send + Sync>> = LazyLock::new(|| {
             Box::new(get_command_function! {
                 $($module),*
             })
@@ -202,6 +203,9 @@ impl BotManager{
             gemini_function_channel,
             alarm_channel,
         }
+    }
+    pub async fn send_message(&self, channel_id: ChannelId, content: CreateMessage) -> Result<Message, serenity::Error> {
+        channel_id.send_message(&self.client.http, content).await
     }
     pub async fn run(&mut self) {
         let mut fun_alarm_receiver = self.gemini_function_channel.clone();
