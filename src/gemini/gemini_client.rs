@@ -9,8 +9,8 @@ use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, G
 use reqwest::Client;
 use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
-use serenity::all::{ChannelId, CreateMessage};
-use crate::discord::discord_bot_manager::{get_discord_service, BotManager};
+use serenity::all::{ChannelId, CreateMessage, Message, MessageId};
+use crate::service::discord_message_service::{send_discord_message,edit_discord_message};
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
@@ -311,6 +311,7 @@ impl GeminiClientTrait for GeminiClient {
         let mut avg_logprobs = 0.0;
         let mut trycount = 0;
         let mut thoughts: Option<String> = None;
+        let mut response_message_id:Option<MessageId> = None;
         let mut hasher = hash::DefaultHasher::new();
         let mut last_hash: u64 = {
             response_result.hash(&mut hasher);
@@ -341,7 +342,6 @@ impl GeminiClientTrait for GeminiClient {
                 .and_then(|contents| contents.as_object())
                 .and_then(|candidates| candidates.get("parts"))
                 .and_then(|parts| parts.as_array());
-            let mut response_message_id:Option<u64> = None;
             if let Some(parts) = now_parts {
                 for part in parts {
                     if let Some(fn_call) = part.get("functionCall") {
@@ -378,38 +378,43 @@ impl GeminiClientTrait for GeminiClient {
                                     match res {
                                         Ok(result) => {
                                             command_result.push(Ok(result.clone()));
-                                            integral_content_part.push(make_fncall_result_with_value(
-                                                GeminiFunctionResponse {
-                                                    name: fn_name.to_string(),
-                                                    response: Some(json!(result.clone())),
-                                                    id: None,
-                                                    will_continue:None,
+                                            integral_content_part.push(
+                                                make_fncall_result_with_value(
+                                                    GeminiFunctionResponse {
+                                                        name: fn_name.to_string(),
+                                                        response: Some(json!(result.clone())),
+                                                        id: None,
+                                                        will_continue: None,
                                                     scheduling: None,
                                                 }
                                             )
                                         );
-                                        if(response_message_id.is_none()) {
+                                        if response_message_id.is_none() {
+                                            println!("Sending Discord message for function: {}", fn_name);
                                             let msg = result.clone().result_message;
                                             let channel = ChannelId::new(begin_query.channel_id.unwrap_or(0));
-                                            let _discord_client = get_discord_service().await;
-                                            let locked = _discord_client.call::<BotManager>().unwrap();
-                                            let discord_client = locked.try_lock().unwrap();
-                                            let sent = discord_client.send_message(channel, CreateMessage::new().content(msg)).await;
-                                            if let Ok(sent_msg) = sent {
-                                                response_message_id = Some(sent_msg.id.get());
-                                            } else {
-                                                send_debug_error_log(
-                                                    format!("Gemini API > Failed to send Discord message for function {}: {:?}", fn_name, sent.err())
-                                                ).await;
+                                            
+                                            // 채널 시스템을 통한 메시지 전송
+                                            match send_discord_message(channel, CreateMessage::new().content(msg)).await {
+                                                Ok(sent_msg) => {
+                                                    response_message_id = Some(sent_msg.id);
+                                                },
+                                                Err(e) => {
+                                                    send_debug_error_log(
+                                                        format!("Gemini API > Failed to send Discord message for function {}: {}", fn_name, e)
+                                                    ).await;
+                                                }
                                             }
+                                            println!("Discord message sent for function: {}, message ID: {:?}", fn_name, response_message_id);
                                         } else {
+                                            println!("Response message ID already set, skipping sending message.");
                                             let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
                                             GeminiChannelResult{
                                                 message: result.clone(),
                                                 channel_id: begin_query.channel_id.unwrap().to_string(),
                                                 sender: begin_query.user_id.clone().unwrap().clone(),
                                                 guild_id: begin_query.guild_id.unwrap().to_string(),
-                                                message_id: fn_name.to_string(),
+                                                message_id: response_message_id.unwrap().get().to_string(),
                                             });
                                         }
                                         

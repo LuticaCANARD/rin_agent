@@ -13,6 +13,7 @@ use serenity::all::CreateEmbedFooter;
 use serenity::all::CreateInteractionResponse;
 use serenity::all::CreateInteractionResponseMessage;
 use serenity::all::CreateMessage;
+use serenity::all::EditMessage;
 use serenity::all::Guild;
 use serenity::all::GuildId;
 use serenity::all::Http;
@@ -48,6 +49,7 @@ use crate::libs::thread_pipelines::SCHEDULE_TO_DISCORD_PIPELINE;
 use crate::model::db::driver::DB_CONNECTION_POOL;
 use crate::service::discord_error_msg::send_additional_log;
 use crate::service::discord_error_msg::send_debug_error_log;
+use crate::service::discord_message_service::{MessageSendReceiver, MessageSendSender, create_message_channel, init_message_sender};
 use crate::service::voice_session_manager;
 use std::sync::LazyLock;
 use tokio::signal;
@@ -152,9 +154,16 @@ pub struct BotManager {
     client: Client,
     gemini_function_channel: &'static Receiver<GeminiChannelResult>,
     alarm_channel: &'static Receiver<GeminiFunctionAlarm<Option<tb_alarm_model::Model>>>,
+    pub message_sender: Option<MessageSendSender>,
+    message_receiver: Option<MessageSendReceiver>,
 }
 static DISCORD_SERVICE: OnceLock<rs_ervice::RSContext> = OnceLock::new();
+static MESSAGE_RECEIVER: OnceLock<std::sync::Mutex<Option<MessageSendReceiver>>> = OnceLock::new();
 
+
+pub fn get_message_receiver() -> Option<MessageSendReceiver> {
+    MESSAGE_RECEIVER.get()?.lock().ok()?.take()
+}
 
 pub async fn get_discord_service() -> &'static RSContext {
     if let Some(ctx) = DISCORD_SERVICE.get() {
@@ -173,7 +182,7 @@ pub async fn get_discord_service() -> &'static RSContext {
 }
 
 impl BotManager{
-    pub async fn new() -> Self {
+    pub async fn new() -> (Self, MessageSendReceiver) {
         let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
         let intents = GatewayIntents::GUILDS
             |GatewayIntents::GUILD_MESSAGES
@@ -198,19 +207,46 @@ impl BotManager{
                 )
             }
         }
-        Self {
+        let (message_sender, message_receiver) = create_message_channel();
+        
+        // 전역 메시지 리시버 저장소 초기화 (빈 상태로)
+        MESSAGE_RECEIVER.get_or_init(|| std::sync::Mutex::new(None));
+        init_message_sender(message_sender.clone());
+        
+        (Self {
             client,
             gemini_function_channel,
             alarm_channel,
-        }
+            message_sender: Some(message_sender),
+            message_receiver: Some(message_receiver),
+        }, MESSAGE_RECEIVER.get().unwrap().lock().unwrap().take().unwrap_or_else(|| {
+            let (_, rx) = create_message_channel();
+            rx
+        }))
     }
     pub async fn send_message(&self, channel_id: ChannelId, content: CreateMessage) -> Result<Message, serenity::Error> {
         channel_id.send_message(&self.client.http, content).await
     }
-    pub async fn run(&mut self) {
-        let mut fun_alarm_receiver = self.gemini_function_channel.clone();
+    pub async fn run(&mut self) -> Result<(), serenity::Error> {
+        let mut message_receiver = self.message_receiver.take()
+            .ok_or_else(|| serenity::Error::Other("Message receiver not available"))?;
+        let mut fun_alarm_receiver = self.gemini_function_channel.to_owned();
         let mut alarm_channel = self.alarm_channel.clone();
         let client_control = self.client.http.clone();
+        
+        // 메시지 전송 채널 처리를 위한 태스크 생성
+        let http_for_messages = self.client.http.clone();
+        tokio::spawn(async move {
+            while let Some(request) = message_receiver.recv().await {
+                let result = request.channel_id
+                    .send_message(&http_for_messages, request.content)
+                    .await;
+                
+                let _ = request.response_sender.send(result);
+            }
+            LOGGER.log(LogLevel::Debug, "Message sender channel closed");
+        });
+        
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -225,15 +261,18 @@ impl BotManager{
                                 let channel_id = ChannelId::new(message.channel_id.parse::<u64>().unwrap());
                                 let target_user = UserId::new(message.sender.parse::<u64>().unwrap());
                                 let msg = message.message.clone().result_message;
-                                channel_id.send_message(client_control.clone(), CreateMessage::new()
-                                    .content(format!("{} \n {}", target_user.mention(), msg))
-                                    .embed(
-                                        CreateEmbed::new()
-                                            .title("Gemini Function Alarm")
-                                            .description(msg)
-                                            .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
-                                    )
-                                ).await.unwrap();
+                                channel_id.edit_message(
+                                    client_control.clone(), 
+                                    message.message_id.parse::<u64>().unwrap(),
+                                    EditMessage::new()
+                                        .content(format!("{} \n {}", target_user.mention(), msg))
+                                        .embed(
+                                            CreateEmbed::new()
+                                                .title("Gemini Function Alarm")
+                                                .description(msg)
+                                                .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+                                        )
+                                    ).await.unwrap();
                             }
                             Err(_) => {
                                 LOGGER.log(LogLevel::Error, "Gemini function alarm receiver has been closed.");
@@ -283,9 +322,9 @@ impl BotManager{
                 }
             }
         });
-        if let Err(why) = self.client.start().await {
-            println!("Client error: {:?}", why);
-        }
+        
+        // Discord 봇 시작
+        self.client.start().await
     }
 
     
@@ -311,7 +350,16 @@ impl RSContextService for BotManager {
         Ok(())
     }
     fn on_register_crate_instance() -> impl Future<Output = Self> where Self: Sized {
-        async { BotManager::new().await }
+        async { 
+            let (bot_manager, message_receiver) = BotManager::new().await;
+            // 메시지 리시버를 전역 저장소에 다시 저장
+            if let Some(storage) = MESSAGE_RECEIVER.get() {
+                if let Ok(mut guard) = storage.lock() {
+                    *guard = Some(message_receiver);
+                }
+            }
+            bot_manager
+        }
     }
     async fn on_service_created(&mut self, builder: &RSContextBuilder) -> rs_ervice::AsyncHooksResult {
         LOGGER.log(LogLevel::Info, "Discord > BotManager service is created.");

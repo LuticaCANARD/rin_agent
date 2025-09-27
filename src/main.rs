@@ -9,8 +9,7 @@ mod web;
 mod service;
 #[cfg(test)] mod tests;
 use api::instances::init_rin_services;
-use discord::discord_bot_manager::get_discord_service;
-use discord::discord_bot_manager::BotManager;
+use discord::discord_bot_manager::{get_discord_service, BotManager};
 use serenity::prelude::TypeMapKey;
 use service::discord_error_msg::send_additional_log;
 use tokio::sync::Mutex;
@@ -24,11 +23,27 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 async fn fn_discord_thread() {
-    let discord_manager = get_discord_service().await
-        .call::<BotManager>()
-        .unwrap();
-    LOGGER.log(LogLevel::Debug, "Discord > Starting...");
-    discord_manager.lock().await.run().await;
+    let discord_service = get_discord_service().await;
+    let bot_manager_result = discord_service.call::<BotManager>();
+    
+    if let Some(bot_manager_mutex) = bot_manager_result {
+        let mut bot_manager = bot_manager_mutex.lock().await;
+        
+        LOGGER.log(LogLevel::Debug, "Discord > Starting...");
+        
+        match bot_manager.run().await {
+            Ok(_) => {
+                LOGGER.log(LogLevel::Info, "Discord > Bot finished normally");
+            },
+            Err(e) => {
+                LOGGER.log(LogLevel::Error, &format!("Discord > Bot run error: {:?}", e));
+                send_additional_log(format!("Discord bot run error: {:?}", e), None).await;
+            }
+        }
+    } else {
+        LOGGER.log(LogLevel::Error, "Discord > Failed to get BotManager");
+        send_additional_log("Failed to get Discord BotManager".to_string(), None).await;
+    }
 }
 async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
 

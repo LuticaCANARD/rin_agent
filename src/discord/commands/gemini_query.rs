@@ -396,7 +396,7 @@ gemini_client.start_gemini_cache(
                 GuildCommandResponse {
                     content: CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                         .content("질문이 성공적으로 처리되었습니다!")),
-                    do_not_send: false,
+                    do_not_send: true,
 
                 }
             );
