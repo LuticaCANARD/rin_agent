@@ -243,6 +243,7 @@ impl ScheduleService {
                 channel_id: alarm_model.clone().channel_id.to_string(),
                 message_id: "".to_string(),
                 guild_id: "0".to_string(),
+                need_send: false,
             };
             self.alarm_pipe_sender.send(alarm_item)
             .unwrap_or_else(|e| {

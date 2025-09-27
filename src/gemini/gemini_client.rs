@@ -10,6 +10,7 @@ use reqwest::Client;
 use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
 use serenity::all::{ChannelId, CreateMessage, Message, MessageId};
+use crate::discord::discord_bot_manager::remove_message_process_map_entry;
 use crate::service::discord_message_service::{send_discord_message,edit_discord_message};
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
@@ -406,6 +407,15 @@ impl GeminiClientTrait for GeminiClient {
                                                 }
                                             }
                                             println!("Discord message sent for function: {}, message ID: {:?}", fn_name, response_message_id);
+                                            let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
+                                            GeminiChannelResult{
+                                                message: result.clone(),
+                                                channel_id: begin_query.channel_id.unwrap().to_string(),
+                                                sender: begin_query.user_id.clone().unwrap().clone(),
+                                                guild_id: begin_query.guild_id.unwrap().to_string(),
+                                                message_id: response_message_id.unwrap().get().to_string(),
+                                                need_send: false,
+                                            });
                                         } else {
                                             println!("Response message ID already set, skipping sending message.");
                                             let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
@@ -415,6 +425,7 @@ impl GeminiClientTrait for GeminiClient {
                                                 sender: begin_query.user_id.clone().unwrap().clone(),
                                                 guild_id: begin_query.guild_id.unwrap().to_string(),
                                                 message_id: response_message_id.unwrap().get().to_string(),
+                                                need_send: true,
                                             });
                                         }
                                         
@@ -535,6 +546,11 @@ impl GeminiClientTrait for GeminiClient {
             command_result,
             thoughts,
         };
+        if response_message_id.is_some() {
+            remove_message_process_map_entry(
+            response_message_id.unwrap().get()
+            ).await;
+        }
 
         Ok(gemini_response)
     }

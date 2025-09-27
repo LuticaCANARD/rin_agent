@@ -31,7 +31,9 @@ use tokio::sync::watch::Receiver;
 use std::cell::OnceCell;
 
 
+use std::collections::HashMap;
 use std::env;
+use std::hash::Hash;
 use std::panic;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -131,7 +133,11 @@ define_lazy_static!(USING_COMMANDS, USING_ACTIVATE_COMMANDS,
 );
 
 
+static MESSAGE_PROCESS_MAP: LazyLock<Mutex<HashMap<u64, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub async fn remove_message_process_map_entry(message_id: u64) {
+    MESSAGE_PROCESS_MAP.lock().await.remove(&message_id);
+}
 
 static CLIENT_ID: LazyLock<Option<UserId>> = LazyLock::new(|| (std::env::var("DISCORD_CLIENT_ID").ok()).and_then(|id| id.parse::<u64>().ok()).map(UserId::new));
 
@@ -257,19 +263,38 @@ impl BotManager{
                                     let alarm = fun_alarm_receiver.borrow_and_update();
                                     alarm.clone()
                                 };
+                                let u64_msg_id = message.message_id.parse::<u64>().unwrap();
+                                let mut message_process_map = MESSAGE_PROCESS_MAP.lock().await;
+                                let mut sending = if message_process_map.contains_key(&u64_msg_id) {
+                                    message_process_map.get(&u64_msg_id).unwrap().clone()
+                                } else {
+                                    String::from("Processing your request, please wait...")
+                                };
+
                                 LOGGER.log(LogLevel::Debug, &format!("Gemini function alarm received. {}", message.message_id));
                                 let channel_id = ChannelId::new(message.channel_id.parse::<u64>().unwrap());
                                 let target_user = UserId::new(message.sender.parse::<u64>().unwrap());
                                 let msg = message.message.clone().result_message;
+                                sending = format!("{} \n {}", sending.clone(), msg.clone()).to_string();
+                                let sending_msg = if sending.len() > 1024 {
+                                    sending.chars().rev().take(1024).collect::<String>().chars().rev().collect()
+                                } else {
+                                    sending.clone()
+                                };
+                                message_process_map.insert(u64_msg_id, sending_msg.clone());
+                                if !message.need_send {
+                                    LOGGER.log(LogLevel::Debug, "No need to send message, skipping...");
+                                    continue;
+                                }
                                 channel_id.edit_message(
                                     client_control.clone(), 
-                                    message.message_id.parse::<u64>().unwrap(),
+                                    u64_msg_id,
                                     EditMessage::new()
                                         .content(format!("{} \n {}", target_user.mention(), msg))
                                         .embed(
                                             CreateEmbed::new()
                                                 .title("Gemini Function Alarm")
-                                                .description(msg)
+                                                .description(sending_msg)
                                                 .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
                                         )
                                     ).await.unwrap();
@@ -341,6 +366,8 @@ async fn send_message_for_alarm<T: CacheHttp>(client:T, channel_id: ChannelId,ta
             )
         ).await
     }
+
+
 pub struct Handler;
 
 impl RSContextService for BotManager {
