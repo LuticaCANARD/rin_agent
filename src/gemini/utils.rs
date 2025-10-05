@@ -79,42 +79,6 @@ pub fn generate_gemini_user_chunk(chunk: &GeminiChatChunk)->GeminiContents {
     
 }
 
-pub async fn generate_attachment_url_to_gemini(attachment_url: String) -> Result<GeminiImageInputType, String> {
-    LOGGER.log(crate::libs::logger::LogLevel::Debug, &format!("Image fetch start: {:?}", attachment_url));
-
-    let response = reqwest::get(attachment_url.clone()).await;
-    match response{
-        Ok(response) => {
-            let headers = response.headers().clone();
-            let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-            let base64_image = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            let mime_type = headers.get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("image/png")
-                .to_string();
-            LOGGER.log(crate::libs::logger::LogLevel::Debug, &format!("Image fetch success: {:?}", attachment_url));
-            Ok(GeminiImageInputType {
-                base64_image : Some(base64_image),
-                file_url : None,
-                mime_type
-            })
-        },
-        Err(e) => {
-            LOGGER.log(crate::libs::logger::LogLevel::Error, &format!("Image fetch error: {:?}", e));
-            Err(format!("Failed to fetch image: {}", e))
-        }
-    }
-}
-
-pub async fn generate_attachment_url_to_gemini_with_url(attachment_url: String,mime:String) -> Result<GeminiImageInputType, String> {
-    Ok(GeminiImageInputType{
-        base64_image: None,
-        file_url: Some(attachment_url),
-        mime_type: mime,
-    })
-}
-
-
 pub async fn upload_image_to_gemini(image: GeminiImageInputType,display_name:String) -> Result<GeminiImageInputType, String> {
     
 // curl "https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GOOGLE_API_KEY}" \
@@ -128,20 +92,25 @@ pub async fn upload_image_to_gemini(image: GeminiImageInputType,display_name:Str
 
     let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
     let url = format!("https://generativelanguage.googleapis.com/upload/v1beta/files?key={}", api_key);
-    let mut target_image:Vec<u8> = Vec::new();
-    if let Some(base64_image) = image.base64_image {
-        //let base64_image = base64::engine::general_purpose::STANDARD.decode(image.base64_image.unwrap()).unwrap();
-        target_image = base64::engine::general_purpose::STANDARD.decode(base64_image).unwrap();
-    } else if let Some(file_url) = image.file_url {
-        let response = reqwest::get(file_url.clone()).await.map_err(|e| e.to_string())?;
-        if response.status().is_success() {
-            target_image = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
-        } else {
-            return Err(format!("Failed to fetch image from URL: {}", file_url));
+    let target_image: Vec<u8> = match (&image.base64_image, &image.file_url) {
+        (Some(base64_image), _) => {
+            // base64 이미지가 있으면 우선적으로 사용
+            base64::engine::general_purpose::STANDARD.decode(base64_image)
+                .map_err(|e| format!("Failed to decode base64 image: {}", e))?
+        },
+        (None, Some(file_url)) => {
+            // base64가 없고 URL이 있으면 URL에서 다운로드
+            let response = reqwest::get(file_url.clone()).await.map_err(|e| e.to_string())?;
+            if response.status().is_success() {
+                response.bytes().await.map_err(|e| e.to_string())?.to_vec()
+            } else {
+                return Err(format!("Failed to fetch image from URL: {}", file_url));
+            }
+        },
+        (None, None) => {
+            return Err("No image data provided".to_string());
         }
-    } else {
-        return Err("No image data provided".to_string());
-    }
+    };
     
 
     let mut request_header = reqwest::header::HeaderMap::new();

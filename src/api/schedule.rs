@@ -244,6 +244,7 @@ impl ScheduleService {
                 message_id: "".to_string(),
                 guild_id: "0".to_string(),
                 need_send: false,
+                context_id: 0 // 나중에는 context_id를 넣어주자.
             };
             self.alarm_pipe_sender.send(alarm_item)
             .unwrap_or_else(|e| {
