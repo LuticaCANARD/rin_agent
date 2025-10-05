@@ -1,7 +1,5 @@
 use std::collections::{hash_map, BTreeMap, HashMap};
-use std::fmt::format;
 use std::hash::Hasher;
-use std::ptr::hash;
 use std::{env, hash};
 use std::hash::Hash;
 
@@ -96,8 +94,6 @@ fn make_fncall_result_with_value(fn_res:GeminiFunctionResponse) -> GeminiContent
         fn_res
     };
     let function_execution_result = GeminiParts::new().set_function_response(fn_final_res);
-    println!("Function execution result parts: {:?}", function_execution_result);
-    
     GeminiContents{
         role: GeminiContentRole::Model,
         parts: vec![
@@ -417,27 +413,22 @@ impl GeminiClientTrait for GeminiClient {
                                                 }
                                             )
                                         );
-                                        let image:Option<ImageContainer> = if result.clone().image.is_some() {
-                                            let img = result.clone().image.unwrap();
-                                            let mime = result.clone().result["mime"].as_str().unwrap_or("image/png").to_string();
-                                            Some( ImageContainer { image_data: img, mime_type: mime })
-                                        } else {None};
+                                        let image: Option<ImageContainer> = result.clone().image.map(|img_data| {  
+                                            let mime = result.clone().result["mime"].as_str().unwrap_or("image/png").to_string();  
+                                            ImageContainer { image_data: img_data, mime_type: mime }  
+                                        });
                                         if response_message_id.is_none() {
                                             let msg = result.clone().result_message;
                                             let channel = ChannelId::new(begin_query.channel_id.unwrap_or(0));
                                             let create_message = CreateMessage::new().content(msg);
 
-                                            let create_message = if image.is_some() {
-                                                
-                                                let img = image.unwrap();
+                                             let create_message = if let Some(img) = image {
                                                 let image_data = img.image_data;
                                                 let mime = img.mime_type;
-                                                let ext = if mime == "image/png" {
-                                                    "png"
-                                                } else if mime == "image/jpeg" {
-                                                    "jpg"
-                                                } else {
-                                                    "bin"
+                                                let ext = match mime.as_str() {
+                                                    "image/png" => "png",
+                                                    "image/jpeg" => "jpg",
+                                                    _ => "bin",
                                                 };
                                                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                                                 hasher.write(image_data.as_slice());

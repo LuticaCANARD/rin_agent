@@ -45,8 +45,7 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
         },
         format!("image_{}.{}", image_url_origin.split('/').last().unwrap_or("unknown"), mime.split('/').nth(1).unwrap_or("png"))).await;
       println!("Image URL provided: {}, detected mime type: {}", image_url, mime);
-      if upload.is_err() {
-        let err = upload.err().unwrap();
+      if let Err(err) = upload {
         return Ok(
           GeminiActionResult{
               result_message: format!("error!! : {}", err.clone()),
