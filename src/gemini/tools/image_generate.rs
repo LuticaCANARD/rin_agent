@@ -33,7 +33,7 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
     } else {
       None
     };
-
+    println!("Generating image with prompt: {}", prompt);
     let mut contents = vec![
       GeminiContents{
         role: GeminiContentRole::User,
@@ -53,7 +53,11 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
     let response = reqwest::Client::new()
         .post(&url)
         .body(json!({
-            "contents": contents
+            "contents": contents,
+            "generation_config" : {
+              "response_modalities": ["TEXT", "IMAGE"],
+              "maxOutputTokens" : 2048
+            },
         }).to_string())
         .header("x-goog-api-key", api_key)
         .header("Content-Type", "application/json")
@@ -87,6 +91,7 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
     // Extract first inlineData image from candidates
     let mut found_b64: Option<(String, String)> = None; // (mime, data_b64)
     let value = response.text().await.map_err(|e| e.to_string())?;
+    let mut text_result:Option<String> = None;
 
     let value: serde_json::Value = serde_json::from_str(&value).map_err(|e| e.to_string())?;
     if let Some(cands) = value.get("candidates").and_then(|c| c.as_array()) {
@@ -95,14 +100,20 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
                 for p in parts {
                     // Support both inlineData and inline_data keys
                     if let Some(inline) = p.get("inlineData").or_else(|| p.get("inline_data")) {
-                        if let (Some(mime), Some(data)) = (inline.get("mimeType").and_then(|m| m.as_str()), inline.get("data").and_then(|d| d.as_str())) {
+                        if let (Some(mime), Some(data)) = (inline.get("mimeType").and_then(|m| m.as_str()), 
+                        inline.get("data").and_then(|d| d.as_str())) {
                             found_b64 = Some((mime.to_string(), data.to_string()));
-                            break;
+                        }
+                        LOGGER.log(LogLevel::Debug, &format!("Found inlineData with mime: {} , {}", inline.get("mimeType")
+                        .and_then(|m| m.as_str()).unwrap_or_default(), inline.get("data").and_then(|d| d.as_str()).unwrap_or_default()));
+                    }
+                    if text_result.is_none() {
+                        if let Some(text) = p.get("text").and_then(|t| t.as_str()) {
+                            text_result = Some(text.to_string());
                         }
                     }
                 }
             }
-            if found_b64.is_some() { break; }
         }
     }
 
@@ -110,9 +121,9 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
         Some((mime, b64)) => {
             let bytes = BASE64_STANDARD.decode(b64.as_bytes()).map_err(|e| format!("base64 decode error: {e}"))?;
             Ok(GeminiActionResult{
-                result_message: format!("이미지 생성 완료 ({}, {} bytes)", mime, bytes.len()),
+                result_message: text_result.unwrap_or("이미지 생성 완료".to_string()),
                 result: json!({
-                    "model": "gemini-2.5-flash-image-preview",
+                    "model": GEMINI_NANO_BANANA,
                     "mime": mime,
                     "size": bytes.len()
                 }),

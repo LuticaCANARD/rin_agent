@@ -1,6 +1,7 @@
 use std::collections::{hash_map, BTreeMap, HashMap};
 use std::fmt::format;
 use std::hash::Hasher;
+use std::ptr::hash;
 use std::{env, hash};
 use std::hash::Hash;
 
@@ -9,17 +10,22 @@ use gemini_live_api::types::{GeminiCachedContent, GeminiCachedContentResponse, G
 use reqwest::Client;
 use sea_orm::sea_query::IdenList;
 use serde_json::{json, Map, Value};
-use serenity::all::{ChannelId, CreateMessage, Message, MessageId};
+use serenity::all::{ChannelId, CreateAttachment, CreateMessage, Message, MessageId};
 use crate::discord::discord_bot_manager::remove_message_process_map_entry;
 use crate::service::discord_message_service::{send_discord_message,edit_discord_message};
 use crate::gemini::utils::generate_gemini_user_chunk;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_pipelines::{GeminiChannelResult, GEMINI_FUNCTION_EXECUTION_ALARM};
 use crate::service::discord_error_msg::send_debug_error_log;
-use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_BOT_TOOLS_MODULES, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GENERATE_CONF, SAFETY_SETTINGS};
+use crate::setting::gemini_setting::{GEMINI_BOT_TOOLS, GEMINI_BOT_TOOLS_JSON, GEMINI_BOT_TOOLS_MODULES, GEMINI_MODEL_FLASH, GEMINI_MODEL_PRO, GEMINI_NANO_BANANA, GENERATE_CONF, SAFETY_SETTINGS};
 use crate::gemini::types::{GeminiChatChunk, GeminiResponse};
 
 use super::types::{DiscordUserInfo, GeminiBotToolInputValue, GeminiBotToolInputValueType};
+
+struct ImageContainer {
+    image_data: Vec<u8>,
+    mime_type: String
+}
 
 pub struct GeminiCacheInfo {
     pub cached_key : String,
@@ -74,8 +80,24 @@ fn make_fncall_error(fn_name:String, error: String) -> GeminiContents {
     }
 }
 fn make_fncall_result_with_value(fn_res:GeminiFunctionResponse) -> GeminiContents {
-    let function_execution_result = GeminiParts::new().set_function_response(fn_res);
-
+    let fn_final_res = if fn_res.response.is_some() && fn_res.response.as_ref().unwrap()["result"]["model"] == GEMINI_NANO_BANANA {
+        GeminiFunctionResponse {
+            name: fn_res.name.clone(),
+            response: Some(
+                json!({
+                    "sent" : "ok"
+                })
+            ),
+            id: None,
+            will_continue:None,
+            scheduling: None,
+        }
+    } else {
+        fn_res
+    };
+    let function_execution_result = GeminiParts::new().set_function_response(fn_final_res);
+    println!("Function execution result parts: {:?}", function_execution_result);
+    
     GeminiContents{
         role: GeminiContentRole::Model,
         parts: vec![
@@ -381,6 +403,7 @@ impl GeminiClientTrait for GeminiClient {
                                     match res {
                                         Ok(result) => {
                                             command_result.push(Ok(result.clone()));
+                                            
                                             integral_content_part.push(
                                                 make_fncall_result_with_value(
                                                     GeminiFunctionResponse {
@@ -392,12 +415,39 @@ impl GeminiClientTrait for GeminiClient {
                                                 }
                                             )
                                         );
+                                        let image:Option<ImageContainer> = if result.clone().image.is_some() {
+                                            let img = result.clone().image.unwrap();
+                                            let mime = result.clone().result["mime"].as_str().unwrap_or("image/png").to_string();
+                                            Some( ImageContainer { image_data: img, mime_type: mime })
+                                        } else {None};
                                         if response_message_id.is_none() {
                                             let msg = result.clone().result_message;
                                             let channel = ChannelId::new(begin_query.channel_id.unwrap_or(0));
-                                            
+                                            let create_message = CreateMessage::new().content(msg);
+
+                                            let create_message = if image.is_some() {
+                                                
+                                                let img = image.unwrap();
+                                                let image_data = img.image_data;
+                                                let mime = img.mime_type;
+                                                let ext = if mime == "image/png" {
+                                                    "png"
+                                                } else if mime == "image/jpeg" {
+                                                    "jpg"
+                                                } else {
+                                                    "bin"
+                                                };
+                                                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                                                hasher.write(image_data.as_slice());
+                                                let hash_img = hasher.finish();
+                                                let filename = format!("image_{}_{}.{}", hash_img, chrono::Local::now().format("%Y-%m-%d"), ext);
+                                                let attachment = CreateAttachment::bytes(image_data, filename);
+                                                create_message.add_file(attachment)
+                                            } else {
+                                                create_message
+                                            };
                                             // 채널 시스템을 통한 메시지 전송
-                                            match send_discord_message(channel, CreateMessage::new().content(msg)).await {
+                                            match send_discord_message(channel, create_message).await {
                                                 Ok(sent_msg) => {
                                                     response_message_id = Some(sent_msg.id);
                                                 },
@@ -420,6 +470,8 @@ impl GeminiClientTrait for GeminiClient {
                                                 need_send: false,
                                             });
                                         } else {
+
+                                            // GO TO : 
                                             let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
                                             GeminiChannelResult{
                                                 message: result.clone(),
@@ -604,7 +656,7 @@ impl GeminiClientTrait for GeminiClient {
                 LOGGER.log(LogLevel::Debug, &format!("Gemini API > Resp: {}", rest_text));
                 let response_result = serde_json::from_str::<GeminiCachedContentResponse>(
                     rest_text.as_str()
-                ).map_err(|e| format!("Failed to parse response: {}", e))?;
+                ).map_err(|e: serde_json::Error| format!("Failed to parse response: {}", e))?;
                 LOGGER.log(LogLevel::Debug, &format!("Gemini API > Cache created: {:?}", response_result));
                 Ok(response_result)
             },

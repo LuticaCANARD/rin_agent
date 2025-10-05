@@ -7,6 +7,7 @@ use sea_orm::EntityOrSelect;
 use sea_orm::EntityTrait;
 use sea_orm::ModelTrait;
 use sea_orm::QuerySelect;
+use serenity::all::CreateAttachment;
 use serenity::all::CreateCommand;
 use serenity::all::CreateEmbed;
 use serenity::all::CreateEmbedFooter;
@@ -33,7 +34,9 @@ use std::cell::OnceCell;
 
 use std::collections::HashMap;
 use std::env;
+use std::hash;
 use std::hash::Hash;
+use std::hash::Hasher;
 use std::panic;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -286,18 +289,40 @@ impl BotManager{
                                     LOGGER.log(LogLevel::Debug, "No need to send message, skipping...");
                                     continue;
                                 }
+                                let mut edit_cmd = EditMessage::new()
+                                    .content(format!("{} \n {}", target_user.mention(), msg))
+                                    .embed(
+                                        CreateEmbed::new()
+                                            .title("Gemini Function Alarm")
+                                            .description(sending_msg.clone())
+                                            .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
+                                    );
+                                if message.message.image.is_some() {
+                                    let image_data = message.message.image.unwrap();
+                                    let mime = message.message.result.get("mime").and_then(|m| m.as_str()).unwrap_or("image/png").to_string();
+                                    let ext = if mime == "image/png" {
+                                        "png"
+                                    } else if mime == "image/jpeg" {
+                                        "jpg"
+                                    } else {
+                                        "bin"
+                                    };
+                                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                                    hasher.write(image_data.as_slice());
+                                    let hash_img = hasher.finish();
+                                    let filename = format!("image_{}_{}.{}", hash_img, chrono::Local::now().format("%Y-%m-%d"), ext);
+                                    edit_cmd = edit_cmd.new_attachment(
+                                        CreateAttachment::bytes(
+                                            image_data, filename
+                                        )
+                                    );
+                                }
+
                                 channel_id.edit_message(
                                     client_control.clone(), 
                                     u64_msg_id,
-                                    EditMessage::new()
-                                        .content(format!("{} \n {}", target_user.mention(), msg))
-                                        .embed(
-                                            CreateEmbed::new()
-                                                .title("Gemini Function Alarm")
-                                                .description(sending_msg)
-                                                .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
-                                        )
-                                    ).await.unwrap();
+                                    edit_cmd
+                                ).await.unwrap();
                             }
                             Err(_) => {
                                 LOGGER.log(LogLevel::Error, "Gemini function alarm receiver has been closed.");
