@@ -367,6 +367,7 @@ impl GeminiClientTrait for GeminiClient {
                                         .filter_map(|item| item.as_str().map(|s| s.to_string()))
                                         .collect());
                             } else {
+                                function_call_count += 1;
                                 let args = fn_call.get("args")
                                     .and_then(|args| args.as_object())
                                     .cloned()
