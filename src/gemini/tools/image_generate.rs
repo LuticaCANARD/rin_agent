@@ -43,8 +43,7 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
           mime_type: mime.to_string(),
           base64_image: None,
         },
-        format!("image_{}.{}", unsafe { rand() % 100000 }, mime.split('/').nth(1).unwrap_or("png")
-      )).await;
+        format!("image_{}.{}", image_url_origin.split('/').last().unwrap_or("unknown"), mime.split('/').nth(1).unwrap_or("png"))).await;
       println!("Image URL provided: {}, detected mime type: {}", image_url, mime);
       if upload.is_err() {
         let err = upload.err().unwrap();
@@ -169,7 +168,7 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
                 result: json!({
                     "model": GEMINI_NANO_BANANA,
                     "mime": mime,
-                    "size": bytes.len()
+                    "size": bytes.len(),
                 }),
                 error: None,
                 show_user: Some("이미지를 생성했어요.".to_string()),
