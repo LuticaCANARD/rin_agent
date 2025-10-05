@@ -33,6 +33,8 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
         "image/jpeg"
       } else if image_url_origin.ends_with(".gif") {
         "image/gif"
+      } else if image_url_origin.ends_with(".webp") {
+        "image/webp"
       } else {
         "application/octet-stream" // Fallback mime type
       };
