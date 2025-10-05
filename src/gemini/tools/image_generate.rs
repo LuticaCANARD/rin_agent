@@ -2,8 +2,6 @@ use std::{collections::{BTreeMap, HashMap}, env};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
 use gemini_live_api::{libs::logger::{LogLevel, LOGGER}, types::{enums::{GeminiContentRole, GeminiSchemaType}, GeminiContents, GeminiParts}};
-
-use libc::rand;
 use serde_json::json;
 
 use crate::{gemini::{types::{DiscordUserInfo, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotTools, GeminiImageInputType}, utils::upload_image_to_gemini}, setting::gemini_setting::GEMINI_NANO_BANANA};
