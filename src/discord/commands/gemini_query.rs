@@ -171,7 +171,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
 
             // Send a response to the interaction
             _options.create_response(_ctx,CreateInteractionResponse::Message(discord_response_message)).await?;
-            let response_message = _options.get_response(_ctx).await?;
             let is_show_thought = options.iter().find(|o| o.name == "show_thought");
             let is_show_thought = if is_show_thought.is_some() {
                 let unwarped = is_show_thought.unwrap().value.clone();
@@ -210,11 +209,6 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                 guild_id: Some(guild_id),
                 channel_id: Some(_options.channel_id.get()),
             };
-            let gemini_cached_info = 
-            gemini_client.start_gemini_cache(
-                vec![user_said.clone()], &start_query, use_pro, 600.0
-            ).await;
-
 
             let make_context = AiContextDiscordEntity::insert(
             AiContextDiscordModel { // Create a new context
@@ -259,7 +253,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                     use_pro,
                     thinking_bought,
                     None,
-                    user_info
+                    user_info,
+                    make_context.id
                 )
                 .await;
             if response.is_err() {
@@ -703,9 +698,18 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
     };
     let image_record = image.clone();
     let image_record_for_tx = image_record.clone();
-
+    let msg = calling_msg.content.clone();
+    let query = if calling_msg.attachments.len() > 0 {
+        let mut links = vec![];
+        for att in calling_msg.attachments.iter() {
+            links.push(att.proxy_url.clone());
+        }
+        format!("{}\n----FILES------\n{}", msg, links.join("\n"))
+    } else {
+        msg
+    };
     let user_msg_current = GeminiChatChunk{
-        query: calling_msg.content.clone(),
+        query ,
         is_bot: false,
         user_id: Some(calling_msg.author.id.get().to_string()),
         timestamp: calling_msg.timestamp.to_string(),
@@ -781,7 +785,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         context_using_pro,
         thinking_bought,
         cache_key,
-        user_info
+        user_info,
+        continue_context
     )
     .await;
     if ai_response.is_err() {

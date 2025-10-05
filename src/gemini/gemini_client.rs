@@ -218,7 +218,8 @@ pub trait GeminiClientTrait {
         use_pro:bool,
         thinking_bought:Option<i32>,
         cached:Option<String>,
-        user_info:Option<DiscordUserInfo>
+        user_info:Option<DiscordUserInfo>,
+        context_id: i64
 ) -> Result<GeminiResponse, String>;
     fn generate_to_gemini_query(&self, query: Vec<GeminiChatChunk>,
         begin_query:&GeminiChatChunk,thinking_bought:Option<i32>,
@@ -281,7 +282,8 @@ impl GeminiClientTrait for GeminiClient {
         use_pro:bool,
         thinking_bought:Option<i32>,
         cached:Option<String>,
-        user_info:Option<DiscordUserInfo>
+        user_info:Option<DiscordUserInfo>,
+        context_id: i64
     ) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
@@ -468,6 +470,7 @@ impl GeminiClientTrait for GeminiClient {
                                                 guild_id: begin_query.guild_id.unwrap().to_string(),
                                                 message_id: response_message_id.unwrap().get().to_string(),
                                                 need_send: false,
+                                                context_id: context_id
                                             });
                                         } else {
 
@@ -480,6 +483,7 @@ impl GeminiClientTrait for GeminiClient {
                                                 guild_id: begin_query.guild_id.unwrap().to_string(),
                                                 message_id: response_message_id.unwrap().get().to_string(),
                                                 need_send: true,
+                                                context_id: context_id
                                             });
                                         }
                                         

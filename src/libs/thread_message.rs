@@ -16,6 +16,7 @@ pub struct GeminiFunctionAlarm<T> where T: Default + Clone + 'static {
     pub message_id: String,
     pub guild_id: String,
     pub need_send: bool,
+    pub context_id: i64,
 }
 
 #[derive(Default,Clone)]

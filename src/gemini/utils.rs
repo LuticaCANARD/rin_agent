@@ -79,42 +79,6 @@ pub fn generate_gemini_user_chunk(chunk: &GeminiChatChunk)->GeminiContents {
     
 }
 
-pub async fn generate_attachment_url_to_gemini(attachment_url: String) -> Result<GeminiImageInputType, String> {
-    LOGGER.log(crate::libs::logger::LogLevel::Debug, &format!("Image fetch start: {:?}", attachment_url));
-
-    let response = reqwest::get(attachment_url.clone()).await;
-    match response{
-        Ok(response) => {
-            let headers = response.headers().clone();
-            let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-            let base64_image = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            let mime_type = headers.get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("image/png")
-                .to_string();
-            LOGGER.log(crate::libs::logger::LogLevel::Debug, &format!("Image fetch success: {:?}", attachment_url));
-            Ok(GeminiImageInputType {
-                base64_image : Some(base64_image),
-                file_url : None,
-                mime_type
-            })
-        },
-        Err(e) => {
-            LOGGER.log(crate::libs::logger::LogLevel::Error, &format!("Image fetch error: {:?}", e));
-            Err(format!("Failed to fetch image: {}", e))
-        }
-    }
-}
-
-pub async fn generate_attachment_url_to_gemini_with_url(attachment_url: String,mime:String) -> Result<GeminiImageInputType, String> {
-    Ok(GeminiImageInputType{
-        base64_image: None,
-        file_url: Some(attachment_url),
-        mime_type: mime,
-    })
-}
-
-
 pub async fn upload_image_to_gemini(image: GeminiImageInputType,display_name:String) -> Result<GeminiImageInputType, String> {
     
 // curl "https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GOOGLE_API_KEY}" \
