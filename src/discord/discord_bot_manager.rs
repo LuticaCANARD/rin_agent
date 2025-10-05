@@ -297,8 +297,8 @@ impl BotManager{
                                             .description(sending_msg.clone())
                                             .footer(CreateEmbedFooter::new("time... : ".to_string() + &chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()))
                                     );
-                                if message.message.image.is_some() {
-                                    let image_data = message.message.image.unwrap();
+
+                                if let Some(image_data) = message.message.image {
                                     let mime = message.message.result.get("mime").and_then(|m| m.as_str()).unwrap_or("image/png").to_string();
                                     let ext = if mime == "image/png" {
                                         "png"
@@ -316,6 +316,7 @@ impl BotManager{
                                             image_data, filename
                                         )
                                     );
+                                
                                 }
 
                                 channel_id.edit_message(
