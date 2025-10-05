@@ -126,7 +126,7 @@ pub fn generate_gemini_cache_setting(
             ),
         }),
         ttl : format!("{:.7}s", ttl),
-        model: format!("models/{}", if use_pro { GEMINI_MODEL_PRO } else { GEMINI_MODEL_FLASH}).to_string(),
+        model: format!("models/{}", if use_pro { GEMINI_MODEL_PRO } else { GEMINI_MODEL_FLASH }).to_string(),
         display_name: None,
     }
 }
@@ -303,7 +303,8 @@ impl GeminiClientTrait for GeminiClient {
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Resp: {}", response_result));
         let mut response_found = false;
         let mut gemini_sending_query = objected_query.clone();
-
+        let maximum_function_call = 9;
+        let mut function_call_count = 0;
         let mut last_contents = response_result.clone();
         let mut discord_msg = String::new();
         let mut command_result = Vec::new();
@@ -391,7 +392,6 @@ impl GeminiClientTrait for GeminiClient {
                                             )
                                         );
                                         if response_message_id.is_none() {
-                                            println!("Sending Discord message for function: {}", fn_name);
                                             let msg = result.clone().result_message;
                                             let channel = ChannelId::new(begin_query.channel_id.unwrap_or(0));
                                             
@@ -406,7 +406,9 @@ impl GeminiClientTrait for GeminiClient {
                                                     ).await;
                                                 }
                                             }
-                                            println!("Discord message sent for function: {}, message ID: {:?}", fn_name, response_message_id);
+                                            LOGGER.log(LogLevel::Debug, 
+                                                &format!("Discord message sent for function: {}, message ID: {:?}", fn_name, response_message_id)
+                                            );
                                             let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
                                             GeminiChannelResult{
                                                 message: result.clone(),
@@ -417,7 +419,6 @@ impl GeminiClientTrait for GeminiClient {
                                                 need_send: false,
                                             });
                                         } else {
-                                            println!("Response message ID already set, skipping sending message.");
                                             let _ = GEMINI_FUNCTION_EXECUTION_ALARM.sender.send(
                                             GeminiChannelResult{
                                                 message: result.clone(),
@@ -526,7 +527,11 @@ impl GeminiClientTrait for GeminiClient {
                     last_hash = hash_value;
                     last_contents = response_result.clone();
                 }
-
+                if function_call_count >= maximum_function_call {
+                    // 최대 함수 호출 횟수에 도달했음을 기록하고, 강제로 response_msg 함수만 허용하도록 설정
+                    LOGGER.log(LogLevel::Warning, "Gemini API > Maximum function call attempts reached, forcing response_msg");
+                    gemini_sending_query["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"] = json!(["response_msg"]);
+                }
                 avg_logprobs = now_contents.get("averageLogprobs")
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.0);

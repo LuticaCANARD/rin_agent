@@ -1,7 +1,7 @@
 use std::{collections::{BTreeMap, HashMap}, env};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
-use gemini_live_api::types::{enums::{GeminiContentRole, GeminiSchemaType}, GeminiContents, GeminiParts};
+use gemini_live_api::{libs::logger::{LogLevel, LOGGER}, types::{enums::{GeminiContentRole, GeminiSchemaType}, GeminiContents, GeminiParts}};
 
 use serde_json::json;
 
@@ -37,7 +37,12 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
     let mut contents = vec![
       GeminiContents{
         role: GeminiContentRole::User,
-        parts: vec![],
+        parts: vec![
+          GeminiParts{
+            text: Some(prompt.clone()),
+            ..Default::default()
+          }
+        ],
       }
     ];
 
