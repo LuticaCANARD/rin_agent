@@ -31,8 +31,6 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
         "image/png"
       } else if image_url_origin.ends_with(".jpg") || image_url_origin.ends_with(".jpeg") {
         "image/jpeg"
-      } else if image_url_origin.ends_with(".gif") {
-        "image/gif"
       } else if image_url_origin.ends_with(".webp") {
         "image/webp"
       } else if image_url_origin.ends_with(".heic") {
@@ -40,7 +38,17 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
       } else if image_url_origin.ends_with(".heif") {
         "image/heif"
       } else {
-        "application/octet-stream" // Fallback mime type
+        return Ok(
+          GeminiActionResult{
+              result_message: format!("error!! : Unsupported image format"),
+              result: json!({
+                  "res": format!("error!! : Unsupported image format"),
+              }),
+              error: Some("Unsupported image format".to_string()),
+              show_user: Some("지원하지 않는 이미지 형식입니다.".to_string()),
+              image: None,
+          }
+        )
       };
 
       let upload = upload_image_to_gemini(
