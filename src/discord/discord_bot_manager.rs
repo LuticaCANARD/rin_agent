@@ -14,6 +14,7 @@ use serenity::all::CreateEmbedFooter;
 use serenity::all::CreateInteractionResponse;
 use serenity::all::CreateInteractionResponseMessage;
 use serenity::all::CreateMessage;
+use serenity::all::EditAttachments;
 use serenity::all::EditMessage;
 use serenity::all::Guild;
 use serenity::all::GuildId;
@@ -311,9 +312,11 @@ impl BotManager{
                                     hasher.write(image_data.as_slice());
                                     let hash_img = hasher.finish();
                                     let filename = format!("image_{}_{}.{}", hash_img, chrono::Local::now().format("%Y-%m-%d"), ext);
-                                    edit_cmd = edit_cmd.new_attachment(
-                                        CreateAttachment::bytes(
-                                            image_data, filename
+                                    edit_cmd = edit_cmd.attachments(
+                                        EditAttachments::new().add(
+                                            CreateAttachment::bytes(
+                                                image_data, filename
+                                            )
                                         )
                                     );
                                 

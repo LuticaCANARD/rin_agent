@@ -2,8 +2,6 @@ use std::{collections::{BTreeMap, HashMap}, env};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
 use gemini_live_api::{libs::logger::{LogLevel, LOGGER}, types::{enums::{GeminiContentRole, GeminiSchemaType}, GeminiContents, GeminiParts}};
-
-use libc::rand;
 use serde_json::json;
 
 use crate::{gemini::{types::{DiscordUserInfo, GeminiActionResult, GeminiBotToolInput, GeminiBotToolInputValue, GeminiBotTools, GeminiImageInputType}, utils::upload_image_to_gemini}, setting::gemini_setting::GEMINI_NANO_BANANA};
@@ -27,17 +25,22 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
       let image_url = image_url.unwrap().value.to_string();
       let split_url = image_url.split('?').collect::<Vec<&str>>();
       let image_url_origin = split_url[0]; // Remove query parameters for mime type detection
-      let mime = if image_url_origin.ends_with(".png") {
-        "image/png"
-      } else if image_url_origin.ends_with(".jpg") || image_url_origin.ends_with(".jpeg") {
-        "image/jpeg"
-      } else if image_url_origin.ends_with(".webp") {
-        "image/webp"
-      } else if image_url_origin.ends_with(".heic") {
-        "image/heic"
-      } else if image_url_origin.ends_with(".heif") {
-        "image/heif"
-      } else {
+
+      let extension = std::path::Path::new(image_url_origin)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("")
+        .to_lowercase();
+
+      let mime = match extension.as_str() {
+          "png" => "image/png",
+          "jpg" | "jpeg" => "image/jpeg",
+          "webp" => "image/webp",
+          "heic" => "image/heic",
+          "heif" => "image/heif",
+          _ => { "application/octet-stream" }
+      };
+      if mime == "application/octet-stream" {
         return Ok(
           GeminiActionResult{
               result_message: format!("error!! : Unsupported image format"),
@@ -49,7 +52,7 @@ pub async fn generate_image(params : HashMap<String,GeminiBotToolInputValue>,inf
               image: None,
           }
         )
-      };
+      }
 
       let upload = upload_image_to_gemini(
         GeminiImageInputType{
