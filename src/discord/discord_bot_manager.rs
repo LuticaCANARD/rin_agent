@@ -5,7 +5,6 @@ use rs_ervice::RSContextBuilder;
 use rs_ervice::RSContextService;
 use sea_orm::EntityOrSelect;
 use sea_orm::EntityTrait;
-use sea_orm::ModelTrait;
 use sea_orm::QuerySelect;
 use serenity::all::CreateAttachment;
 use serenity::all::CreateCommand;
@@ -20,7 +19,6 @@ use serenity::all::Guild;
 use serenity::all::GuildId;
 use serenity::all::Http;
 use serenity::all::UnavailableGuild;
-use serenity::client;
 use serenity::client::Context;
 use serenity::prelude::*;
 use serenity::async_trait;
@@ -30,13 +28,8 @@ use serenity::model::application::{Command, Interaction};
 use songbird::SerenityInit;
 use sqlx::types::chrono;
 use tokio::sync::watch::Receiver;
-use std::cell::OnceCell;
-
-
 use std::collections::HashMap;
 use std::env;
-use std::hash;
-use std::hash::Hash;
 use std::hash::Hasher;
 use std::panic;
 use std::sync::Arc;
@@ -45,7 +38,6 @@ use serenity::model::prelude::*;
 use std::pin::Pin;
 use std::future::Future;
 use crate::discord::voice_handler::voice_handler::VoiceHandler;
-use crate::gemini::types::GeminiActionResult;
 use crate::libs::logger::{LOGGER, LogLevel};
 use crate::libs::thread_message::GeminiFunctionAlarm;
 use crate::libs::thread_pipelines::AsyncThreadPipeline;
@@ -312,8 +304,12 @@ impl BotManager{
                                     hasher.write(image_data.as_slice());
                                     let hash_img = hasher.finish();
                                     let filename = format!("image_{}_{}.{}", hash_img, chrono::Local::now().format("%Y-%m-%d"), ext);
+                                    let msgid = MessageId::new(u64_msg_id);
+                                    let msg = client_control.clone().get_message(channel_id.clone(),msgid).await.unwrap();
                                     edit_cmd = edit_cmd.attachments(
-                                        EditAttachments::new().add(
+                                        EditAttachments::keep_all(
+                                            &msg
+                                        ).add(
                                             CreateAttachment::bytes(
                                                 image_data, filename
                                             )
