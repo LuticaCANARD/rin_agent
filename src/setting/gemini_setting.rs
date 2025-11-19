@@ -13,8 +13,8 @@ use gemini_live_api::types::{
 };
 use crate::{gemini::{types::{GeminiBotTools, GeminiChatChunk}, utils::generate_fns_to_gemini}, libs::logger::LOGGER};
 
-pub const GEMINI_MODEL_PRO : &str = "gemini-2.5-pro";
-pub const GEMINI_MODEL_FLASH: &str = "gemini-2.5-flash"; 
+pub const GEMINI_MODEL_PRO : &str = "gemini-3-pro-preview";
+pub const GEMINI_MODEL_FLASH: &str = "gemini-flash-latest"; 
 pub const GEMINI_NANO_BANANA: &str = "gemini-2.5-flash-image";
 
 pub static MANAGER_ID: LazyLock<i64> = LazyLock::new(|| {
@@ -29,7 +29,6 @@ pub static DEVELOPER_QUERY: LazyLock<String> = LazyLock::new(|| {
     } else {
         "".to_string()
     }
-
 });
 
 static QUERY_MAP : LazyLock<HashMap<&'static str, String>> = LazyLock::new(|| {
