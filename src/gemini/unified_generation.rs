@@ -7,7 +7,45 @@ use crate::gemini::types::{GenerationModality, UnifiedGenerationConfig, GeminiAc
 use crate::gemini::utils::upload_image_to_gemini;
 use crate::setting::gemini_setting::GEMINI_NANO_BANANA;
 
-/// Unified generation function that can handle text, image, and audio generation
+/// Unified generation function that can handle text, image, and audio generation.
+/// 
+/// This function provides a single interface for generating content across multiple modalities:
+/// - Text generation
+/// - Image generation
+/// - Audio/voice generation
+/// 
+/// # Arguments
+/// 
+/// * `prompt` - The text prompt for generation
+/// * `config` - Configuration specifying the model and modalities to use
+/// * `image_input` - Optional image input for image-to-image or multimodal generation
+/// 
+/// # Returns
+/// 
+/// Returns a `GeminiActionResult` containing the generated content. Depending on the modalities
+/// specified in the config, the result may contain text, image data, or audio data.
+/// 
+/// # Example
+/// 
+/// ```rust,ignore
+/// use crate::gemini::types::{GenerationModality, UnifiedGenerationConfig};
+/// 
+/// // Generate an image
+/// let config = UnifiedGenerationConfig {
+///     modalities: vec![GenerationModality::Text, GenerationModality::Image],
+///     model: "gemini-2.5-flash-image".to_string(),
+///     max_output_tokens: Some(2048),
+/// };
+/// let result = unified_generate("A beautiful sunset".to_string(), config, None).await?;
+/// 
+/// // Generate audio
+/// let config = UnifiedGenerationConfig {
+///     modalities: vec![GenerationModality::Text, GenerationModality::Audio],
+///     model: "gemini-2.5-flash-image".to_string(),
+///     max_output_tokens: Some(2048),
+/// };
+/// let result = unified_generate("Hello world".to_string(), config, None).await?;
+/// ```
 pub async fn unified_generate(
     prompt: String,
     config: UnifiedGenerationConfig,
