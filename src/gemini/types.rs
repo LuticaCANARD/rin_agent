@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use serenity::all::{ChannelId, UserId};
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum GenerationModality {
+    Text,
+    Image,
+    Audio,
+}
+
 #[derive(Debug, Clone,Default,Deserialize,Serialize)]
 pub struct GeminiActionResult {
     pub result_message: String,
@@ -12,6 +19,7 @@ pub struct GeminiActionResult {
     pub error: Option<String>,
     pub show_user: Option<String>,
     pub image: Option<Vec<u8>>, // base64 image
+    pub audio: Option<Vec<u8>>, // base64 audio
 }
 #[derive(Debug, Clone)]
 pub struct GeminiResponse {
@@ -123,6 +131,23 @@ impl Default for GeminiBotTools{
                 ..Default::default()
             }) }),
             response: None    
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnifiedGenerationConfig {
+    pub modalities: Vec<GenerationModality>,
+    pub model: String,
+    pub max_output_tokens: Option<i32>,
+}
+
+impl Default for UnifiedGenerationConfig {
+    fn default() -> Self {
+        Self {
+            modalities: vec![GenerationModality::Text],
+            model: "gemini-flash-latest".to_string(),
+            max_output_tokens: Some(2048),
         }
     }
 }
