@@ -279,7 +279,7 @@ impl GeminiClientTrait for GeminiClient {
         thinking_bought:Option<i32>,
         cached:Option<String>,
         user_info:Option<DiscordUserInfo>,
-        context_id: i64
+        context_id: i64,
     ) -> Result<GeminiResponse, String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         
@@ -664,8 +664,7 @@ impl GeminiClientTrait for GeminiClient {
             }
         }
     }
-    async fn drop_cache(&mut self, cache_key: &str) -> Result<(), String>
-    {
+    async fn drop_cache(&mut self, cache_key: &str) -> Result<(), String> {
         let api_key = env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/{}?key={}",
@@ -688,7 +687,6 @@ impl GeminiClientTrait for GeminiClient {
         LOGGER.log(LogLevel::Debug, &format!("Gemini API > Cache dropped: {}", cache_key));
         Ok(())
     }
-
 }
 
 // pub async fn send_query_to_cached_gemini() -> Result<GeminiResponse, String> {

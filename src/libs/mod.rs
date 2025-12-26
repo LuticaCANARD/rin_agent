@@ -3,3 +3,4 @@ pub mod thread_pipelines;
 pub mod thread_message;
 pub mod redis_driver;
 pub mod voice_session;
+pub mod array_calc;

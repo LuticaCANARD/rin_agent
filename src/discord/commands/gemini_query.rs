@@ -156,7 +156,12 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
         ResolvedValue::String(ref s) => {
             let mut gemini_client = gemini_client::GeminiClient::new();
             let chatting_channel = _ctx.http.get_channel(_options.channel_id).await.unwrap();
-            let typing: serenity::all::Typing = chatting_channel.guild().unwrap().start_typing(&_ctx.http);
+            let guild = chatting_channel.guild();
+            if(guild.is_none()) {
+                LOGGER.log(LogLevel::Error, "Typing Error");
+                return Err(serenity::Error::Other("Typing Error"));
+            }
+            let typing = guild.unwrap().start_typing(&_ctx.http);
             let db = DB_CONNECTION_POOL.get();
             if db.is_none() {
                 LOGGER.log(LogLevel::Error, "DB Connection Error");
@@ -199,7 +204,13 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                     channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                     by_bot: sea_orm::Set(false),
                     ..Default::default()
-            }).exec_with_returning(&db).await.unwrap();
+            }).exec_with_returning(&db).await;
+            if user_query.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("DB Insert Error: {:?}", user_query));
+                typing.stop();
+                return Err(serenity::Error::Other("DB Insert Error"));
+            }
+            let user_query = user_query.unwrap();
             let user_said = GeminiChatChunk {
                 query: user_query.context.clone(),
                 is_bot: false,
@@ -224,8 +235,13 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                 ..Default::default()
             })
             .exec_with_returning(&db)
-            .await
-            .unwrap();
+            .await;
+            if make_context.is_err() {
+                LOGGER.log(LogLevel::Error, &format!("DB Insert Context Error: {:?}", make_context));
+                typing.stop();
+                return Err(serenity::Error::Other("DB Insert Context Error"));
+            }
+            let make_context = make_context.unwrap();
             
             let start_user_msg = GeminiChatChunk{
                 query: str_query.clone(),
