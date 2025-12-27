@@ -24,7 +24,7 @@ pub fn test_query() -> &'static str {
 
 pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
-        .mount("/", rocket::fs::FileServer::from("static"))
+        .mount("/", rocket::fs::FileServer::from("client"))
         .mount("/api/", routes![
             test_index,
             get_status,
