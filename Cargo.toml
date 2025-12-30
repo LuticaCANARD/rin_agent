@@ -20,7 +20,7 @@ path = "src/main.rs"
 [dependencies]
 serenity = { version = "*", features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]}
 rocket = "*"
-sea-orm = { version = "1.1.12", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ] }
+sea-orm = { version = "1.1.12", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros" ] }
 # migration = { path = "migration" } # depends on your needs
 entity = { path = "entity" }
 gemini_live_api= { path = "gemini_live_api" }
@@ -37,7 +37,7 @@ base64 = "0.22.1"
 libc = "0.2.175"
 redis = { version = "0.32.5", features = ["tokio-comp","r2d2"] }
 r2d2 = "0.8.10"
-tokio-tungstenite = { version ="0.26.2", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version ="0.28.0", features = ["native-tls"] }
 futures-util = "0.3.31"
 serde-protobuf = "0.8.2"
 rs_ervice = {version = "0.1.6" , features=["tokio"] }
@@ -48,4 +48,7 @@ songbird = { version = "0.5.0", features = ["serenity"] }
 bytes = "1.10.1"
 dashmap = "6.1.0"
 fred = "10.1.0"
+
+[profile.dev.package.audiopus_sys]
+opt-level = 3
 rumqttc = "0.25.1"

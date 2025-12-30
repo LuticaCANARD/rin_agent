@@ -7,3 +7,7 @@ rin_agent.out
 /scripts
 /static
 /client
+.cargo
+.vscode
+.idea
+.DS_Store
