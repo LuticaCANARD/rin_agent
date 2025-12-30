@@ -1,0 +1,8 @@
+[package]
+name = "manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+entity = { path = "../entity" }
+tokio = { version = "1.43.0", features = ["full"] }
