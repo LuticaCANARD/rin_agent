@@ -1,4 +1,0 @@
-[env]
-CMAKE_GENERATOR = "Visual Studio 17 2022"
-CFLAGS = "/Z7"
-CXXFLAGS = "/Z7"

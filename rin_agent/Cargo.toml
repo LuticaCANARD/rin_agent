@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 serenity = { version = "*", features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]}
 rocket = { version = "*", features = ["tls", "json"] }
-sea-orm = { version = "1.1.12", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros" ] }
+sea-orm = { version = "1.1.19", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros" ] }
 # migration = { path = "../migration" } # depends on your needs
 entity = { path = "../entity" }
 gemini_live_api= { path = "gemini_live_api" }
