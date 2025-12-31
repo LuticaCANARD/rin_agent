@@ -86,4 +86,7 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:g
   -d "@$TEMP_JSON"
 ```
 
-안녕?
+## SeaORM 방안
+
+- SeaORM-Cli를 사용함.
+- root에서 `sea-orm-cli migrate up`를 실행

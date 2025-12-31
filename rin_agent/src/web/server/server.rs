@@ -1,6 +1,6 @@
 use rocket::catch;
 use rocket::{fs::NamedFile, get, http::Status, post, Config};
-use super::super::api::statius::get_status;
+use super::super::api::status::get_status;
 use rocket::routes;
 use rocket::catchers;
 
@@ -24,7 +24,7 @@ pub fn test_query() -> &'static str {
 
 pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
     rocket::build()
-        .mount("/", rocket::fs::FileServer::from("static"))
+        .mount("/", rocket::fs::FileServer::from("./client"))
         .mount("/api/", routes![
             test_index,
             get_status,
