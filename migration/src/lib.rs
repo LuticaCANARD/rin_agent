@@ -7,6 +7,8 @@ mod m20250530_213902_add_alarm_user;
 mod m20250531_073854_modify_alarm;
 mod m20250718_074038_add_ai_though_show;
 mod m20251230_130434_add_discord_guild;
+mod m20251231_165439_add_debt_receipt;
+
 
 pub struct Migrator;
 
