@@ -1,11 +1,10 @@
 use rocket::catch;
-use rocket::{fs::NamedFile, get, http::Status, post, Config};
-use super::super::api::status::get_status;
+use rocket::get;
 use rocket::routes;
 use rocket::catchers;
 
-use std::sync::LazyLock;
-
+use crate::web::server::receipt::register::register_receipt;
+use super::super::api::status::get_status;
 
 #[get("/")]
 pub async fn test_index() -> &'static str {
@@ -28,7 +27,8 @@ pub fn get_rocket() -> rocket::Rocket<rocket::Build> {
         .mount("/api/", routes![
             test_index,
             get_status,
-            test_query
+            test_query,
+            register_receipt
         ])
         .register("/", catchers![not_found])
 }
