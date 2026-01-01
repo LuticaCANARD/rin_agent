@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 
 [dependencies]
-serenity = { version = "*", features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]}
+serenity = { version = "*", features = ["cache", "framework", "standard_framework", "voice", "http", "native_tls_backend"]}
 rocket = { version = "*", features = ["tls", "json"] }
 sea-orm = { version = "1.1.19", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros" ] }
 # migration = { path = "../migration" } # depends on your needs

@@ -5,7 +5,7 @@ use rocket::{
 };
 
 #[derive(FromForm)]
-struct RegistrationData {
+pub struct RegistrationData {
     username: String,
     password: String,
     email: String,
@@ -13,7 +13,7 @@ struct RegistrationData {
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
-struct RegistrationResult {
+pub struct RegistrationResult {
     username: String,
     password: String,
     email: String,
@@ -32,6 +32,8 @@ pub async fn register_receipt(
     registration_data: Form<RegistrationData>
 ) -> RegistrationResult {
   
+
+
   RegistrationResult {
     username: registration_data.username.clone(),
     password: registration_data.password.clone(),

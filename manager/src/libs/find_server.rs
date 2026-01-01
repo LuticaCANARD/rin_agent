@@ -5,11 +5,8 @@ pub fn get_server_pid(process_name: &str) -> Option<Pid> {
     sys.refresh_all();
 
     for (pid, process) in sys.processes() {
-        if process.name()
-          .to_ascii_lowercase()
-          .contains(
-            &process_name.to_ascii_lowercase()
-          ) {
+        if *process.name().to_ascii_lowercase() == *process_name.to_ascii_lowercase()
+          {
             return Some(*pid);
         }
     }
