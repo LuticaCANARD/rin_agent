@@ -8,17 +8,15 @@ mod utils;
 mod web;
 mod service;
 #[cfg(test)] mod tests;
+
 use api::instances::init_rin_services;
 use discord::discord_bot_manager::{get_discord_service, BotManager};
-use serenity::prelude::TypeMapKey;
 use service::discord_error_msg::send_additional_log;
-use tokio::sync::Mutex;
 use web::server::server::get_rocket;
 use model::db::driver::connect_to_db;
 use libs::logger::{self, LOGGER,LogLevel};
 use tokio::task;
 use tokio::signal;
-use std::fmt::format;
 use std::sync::Arc;
 use tokio::sync::Notify;
 
