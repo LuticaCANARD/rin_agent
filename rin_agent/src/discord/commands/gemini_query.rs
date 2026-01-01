@@ -180,11 +180,11 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
             let is_show_thought = if is_show_thought.is_some() {
                 let unwarped = is_show_thought.unwrap().value.clone();
                 match unwarped {
-                    ResolvedValue::Boolean(s) => Some(s),
-                    _ => None,
+                    ResolvedValue::Boolean(s) => s,
+                    _ => false,
                 }
             } else {
-                Some(false)
+                false
             };
             let locale = _options.user.locale.clone()
                 .unwrap_or("ko".to_string());
@@ -832,7 +832,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         Some(calling_msg.clone()),
         false,
         context_using_pro,
-        show_thought.unwrap_or(false)
+        show_thought
     ).await;
     typing.stop();
     let mut image_id:Option<i64> = None;

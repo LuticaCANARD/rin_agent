@@ -49,12 +49,6 @@ impl MigrationTrait for Migration {
 #[derive(DeriveIden)]
 enum TbDiscordAiContext {
     Table,
-    Id,
-    GuildId,
-    RootMsg,
-    UsingProModel,
-    ParentContext,
-    ThinkingBought,
     CacheKey,
     CacheExpiresAt,
     CacheCreatedAt,

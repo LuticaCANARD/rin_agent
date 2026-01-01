@@ -3,24 +3,23 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "tb_image_attach_file")]
+#[sea_orm(table_name = "tb_debtor")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub image_id: i64,
-    #[sea_orm(column_type = "Text")]
-    pub file_src: String,
-    pub mime_type: Option<String>,
+    pub id: i32,
+    pub name: String,
+    pub created_at: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::tb_ai_context::Entity")]
-    TbAiContext,
+    #[sea_orm(has_many = "super::tb_debt_receipt::Entity")]
+    TbDebtReceipt,
 }
 
-impl Related<super::tb_ai_context::Entity> for Entity {
+impl Related<super::tb_debt_receipt::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::TbAiContext.def()
+        Relation::TbDebtReceipt.def()
     }
 }
 

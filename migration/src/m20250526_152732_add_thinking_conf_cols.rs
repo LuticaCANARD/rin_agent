@@ -15,7 +15,11 @@ impl MigrationTrait for Migration {
                     .col(pk_auto(TbDiscordAiContext::Id))
                     .col(ColumnDef::new(TbDiscordAiContext::GuildId).big_integer().not_null())
                     .col(ColumnDef::new(TbDiscordAiContext::RootMsg).big_integer().not_null())
-                    .col(ColumnDef::new(TbDiscordAiContext::UsingProModel).boolean().not_null())
+                    .col(
+                        ColumnDef::new(TbDiscordAiContext::UsingProModel)
+                        .boolean()
+                        .null()
+                    )
                     .col(ColumnDef::new(TbDiscordAiContext::ParentContext).array(ColumnType::BigInteger).not_null())
                     .to_owned(),
             )
@@ -39,6 +43,7 @@ impl MigrationTrait for Migration {
                     .add_column_if_not_exists(
                         ColumnDef::new(TbDiscordAiContext::ThinkingBought)
                             .integer()
+                            .null()
                     )
                     .to_owned()
             )
