@@ -40,6 +40,5 @@ songbird = { version = "0.5.0", features = ["serenity"] }
 bytes = "1.10.1"
 dashmap = "6.1.0"
 fred = "10.1.0"
-rumqttc = "0.25.1"
-
+gemini-rust = "1.6.0"
 

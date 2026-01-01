@@ -1,4 +1,18 @@
-pub async fn get_web_result(url: String) -> Result<String, String> {
+use std::collections::HashMap;
+
+enum WebRequestType {
+    Get,
+    Post,
+    Put,
+    Delete,
+}
+
+pub async fn get_web_result(
+    url: String,
+    request_type: WebRequestType,
+    body: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+) -> Result<String, String> {
     let request = reqwest::Client::new()
         .get(format!("https://webdocu.com/api/v1/documents?url={}", url))
         .send()
@@ -14,4 +28,3 @@ pub async fn get_web_result(url: String) -> Result<String, String> {
         Err(e) => Err(format!("Failed to perform request: {}", e)),
     }
 }
-    

@@ -1,6 +1,7 @@
-use entity::prelude::*;
+mod libs;
+mod command;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     println!("Hello from manager!");
 }
+

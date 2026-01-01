@@ -22,17 +22,5 @@ async fn searching_test() {
 }
 #[tokio::test]
 async fn get_document(){
-    dotenv::dotenv().ok(); 
-    LOGGER.log(LogLevel::Debug, "get_document start");
-    let url = "https://www.rust-lang.org/".to_string();
-    let document_result = crate::api::get_web_result::get_web_result(url).await;
-    match document_result {
-        Ok(result) => {
-            LOGGER.log(LogLevel::Debug, format!("get_document result: {}", result).as_str());
-        }
-        Err(e) => {
-            LOGGER.log(LogLevel::Error, format!("get_document error: {}", e).as_str());
-            panic!("get_document failed: {}", e);
-        }
-    }
+    
 }

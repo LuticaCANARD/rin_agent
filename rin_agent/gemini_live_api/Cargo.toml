@@ -10,6 +10,6 @@ tokio = { version = "*", features = ["full"] }
 serde = "1.0.219"
 serde-protobuf = "0.8.2"
 futures-util = "0.3.31"
-reqwest = "0.12.15"
+reqwest = "0.13.1"
 tokio-tungstenite = { version ="0.28.0", features = ["rustls-tls-webpki-roots"] }
 lazy_static = "1.5.0"
