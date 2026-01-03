@@ -10,6 +10,7 @@ mod service;
 #[cfg(test)] mod tests;
 
 use api::instances::init_rin_services;
+use contract::config::{EnvConfigBuilder, RinAgentConfig};
 use discord::discord_bot_manager::{get_discord_service, BotManager};
 use service::discord_error_msg::send_additional_log;
 use web::server::server::get_rocket;
@@ -69,13 +70,9 @@ async fn fn_aspect_thread(threads: Vec<task::JoinHandle<()>>) {
 }
 
 async fn fn_web_server_thread() {
-    let _ = dotenv::dotenv();
-    let _db_init_ = connect_to_db().await;
-
     LOGGER.log(LogLevel::Debug, "Web server > Starting...");
     get_rocket().launch().await.unwrap();
     LOGGER.log(LogLevel::Debug, "Web server > Stopped");
-
 }
 #[cfg(target_os = "linux")]
 fn set_process_name(name: &str) {
@@ -93,10 +90,45 @@ async fn main() {
     #[cfg(target_os = "linux")]
     set_process_name("rin_agent_main_server");
 
-    let _ = dotenv::dotenv();
+    // Load environment variables with CLI-specified strategy
+    let strategy = contract::config::parse_env_strategy_from_args();
+    let dotenv_path = contract::config::parse_dotenv_path_from_args();
+    
+    let mut builder = EnvConfigBuilder::new()
+        .strategy(strategy)
+        .ignore_missing(true);
+    
+    if let Some(path) = dotenv_path {
+        builder = builder.dotenv_path(path);
+    }
+    
+    if let Err(e) = builder.load() {
+        eprintln!("Failed to load environment variables: {}", e);
+        std::process::exit(1);
+    }
+
+    // Load RinAgent configuration from environment
+    let config = match RinAgentConfig::from_env() {
+        Ok(cfg) => {
+            LOGGER.log(LogLevel::Info, "Configuration loaded successfully");
+            cfg
+        }
+        Err(e) => {
+            eprintln!("Failed to load RinAgent configuration: {}", e);
+            LOGGER.log(LogLevel::Error, &format!("Configuration load failed: {}", e));
+            std::process::exit(1);
+        }
+    };
+
+    // Initialize database (once)
     let _db_init_ = connect_to_db().await;
+    
+    // Initialize services
     init_rin_services().await;
-    send_additional_log("Rin Agent Main Server started".to_string(),None).await;
+    
+    let startup_msg = "Rin Agent Main Server started";
+    LOGGER.log(LogLevel::Info, startup_msg);
+    send_additional_log(startup_msg.to_string(), None).await;
     let discord_thread = tokio::spawn(async move { fn_discord_thread().await });
     let web_server_thread = tokio::spawn(async move { fn_web_server_thread().await });
 

@@ -196,6 +196,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                 Some(_options.channel_id.get())
             );
             let str_query = s.to_string();
+            let now = chrono::Utc::now();
             let user_query = AiContextEntity::insert(
                 AiContextModel {
                     user_id: sea_orm::Set(user_id as i64),
@@ -203,6 +204,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                     guild_id: sea_orm::Set(_options.guild_id.unwrap().get() as i64),
                     channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                     by_bot: sea_orm::Set(false),
+                    created_at: sea_orm::Set(now.into()),
+                    updated_at: sea_orm::Set(now.naive_utc()),
                     ..Default::default()
             }).exec_with_returning(&db).await;
             if user_query.is_err() {
@@ -304,6 +307,7 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
 
             //------- DB Action --------
 
+            let now = chrono::Utc::now();
             let insert_bot_response: tb_ai_context::Model = AiContextEntity::insert(
                 AiContextModel {
                     user_id: sea_orm::Set(user_id as i64),
@@ -311,6 +315,8 @@ pub async fn run(_ctx: &Context, _options: &CommandInteraction) -> Result<GuildC
                     guild_id: sea_orm::Set(guild_id as i64),
                     channel_id: sea_orm::Set(_options.channel_id.get() as i64),
                     by_bot: sea_orm::Set(true),
+                    created_at: sea_orm::Set(now.into()),
+                    updated_at: sea_orm::Set(now.naive_utc()),
                     ..Default::default()
                 })
                 .exec_with_returning(&db)
@@ -388,20 +394,21 @@ gemini_client.start_gemini_cache(
             let insert_user_msg_to_context = AiContextDiscordMessageModel {
                 discord_message: sea_orm::Set(_options.id.get() as i64),
                 ai_msg_id: sea_orm::Set(make_context.id as i64),
+                update_at: sea_orm::Set(ChronoDateTime::from(chrono::Utc::now())),
                 ..Default::default()
             };
             let ai_context_discord_messages = send_msgs.iter().map(|msg| { // AI가 디코에 보낸 답
                 AiContextDiscordMessageModel {
                     discord_message: sea_orm::Set(msg.id.get() as i64),
                     ai_msg_id: sea_orm::Set(insert_bot_response.id as i64),
+                    update_at: sea_orm::Set(ChronoDateTime::from(chrono::Utc::now())),
                     ..Default::default()
                 }
             }).collect::<Vec<_>>();
-            let _context_inserted = AiContextDiscordMessageEntity::insert_many(ai_context_discord_messages)
+            let _ = AiContextDiscordMessageEntity::insert_many(ai_context_discord_messages)
                 .add(insert_user_msg_to_context)
                 .exec(&db)
-                .await
-                .unwrap();
+                .await;
             // 끝.
             return Ok(
                 GuildCommandResponse {
@@ -873,6 +880,7 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                 _final_image_id = Some(inserted_image_record.image_id);
             }
         } // 유저 질의
+        let now = chrono::Utc::now();
         let inserted_context_desc = AiContextEntity::insert_many(
             vec![
                 AiContextModel {
@@ -882,6 +890,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                     channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
                     by_bot: sea_orm::Set(false),
                     image_file_id: sea_orm::Set(image_id),
+                    created_at: sea_orm::Set(now.into()),
+                    updated_at: sea_orm::Set(now.naive_utc()),
                     ..Default::default()
                 }, AiContextModel { // AI 응답
                     user_id: sea_orm::Set(calling_msg.author.id.get() as i64),
@@ -890,6 +900,8 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
                     channel_id: sea_orm::Set(calling_msg.channel_id.get() as i64),
                     by_bot: sea_orm::Set(true),
                     image_file_id: sea_orm::Set(None),
+                    created_at: sea_orm::Set(now.into()),
+                    updated_at: sea_orm::Set(now.naive_utc()),
                     ..Default::default()
                 } ]
         )
@@ -1030,12 +1042,14 @@ pub async fn continue_query(_ctx: &Context,calling_msg:&Message,user:&User) -> R
         AiContextDiscordMessageModel {
             discord_message: sea_orm::Set(msg.id.get() as i64),
             ai_msg_id: sea_orm::Set(inserted_context_desc[1].id),
+            update_at: sea_orm::Set(ChronoDateTime::from(chrono::Utc::now())),
             ..Default::default()
         }
     }).collect::<Vec<_>>();
     let insert_user_msg_to_context =  AiContextDiscordMessageModel {
         discord_message: sea_orm::Set(calling_msg.id.get() as i64),
         ai_msg_id: sea_orm::Set(inserted_context_desc[0].id),
+        update_at: sea_orm::Set(ChronoDateTime::from(chrono::Utc::now())),
         ..Default::default()
     };
     AiContextDiscordMessageEntity::insert_many(ai_context_discord_messages)

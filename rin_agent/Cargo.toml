@@ -7,8 +7,6 @@ edition = "2021"
 name = "rin_agent"
 path = "src/main.rs"
 
-
-
 [dependencies]
 serenity = { version = "*", features = ["cache", "framework", "standard_framework", "voice", "http", "native_tls_backend"]}
 rocket = { version = "*", features = ["tls", "json"] }
@@ -16,6 +14,7 @@ sea-orm = { version = "1.1.19", features = [ "sqlx-postgres", "runtime-tokio-nat
 # migration = { path = "../migration" } # depends on your needs
 entity = { path = "../entity" }
 gemini_live_api= { path = "gemini_live_api" }
+contract = { path = "../contract", default-features = false }
 dotenv = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-postgres = "*"

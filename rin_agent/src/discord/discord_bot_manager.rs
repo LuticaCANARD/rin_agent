@@ -548,13 +548,15 @@ impl EventHandler for Handler {
                         ).await.unwrap();
                     } else {
                         LOGGER.log(LogLevel::Error,  err.to_string().as_str());
-                        command.create_response(ctx, 
+                        if let Err(e) = command.create_response(ctx, 
                             CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                             .content("General Discord Bot Error")
                             .add_embed(
                                 make_message_embed("Discord Bot Error", "General Discord Bot Error - Please contact the administrator: @lutica_canard").color(0xFF0000)
                             )
-                    )).await.unwrap();
+                        )).await {
+                            LOGGER.log(LogLevel::Error, &format!("Failed to send error response (interaction may already be acknowledged): {:?}", e));
+                        }
                     }
                     return;
                 }
