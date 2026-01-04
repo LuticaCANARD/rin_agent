@@ -29,10 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder = builder.dotenv_path(path);
     }
     
-    builder.load()?;
+    builder.load().unwrap();
     
     // Build configuration from environment variables
-    let config = ManagerConfig::from_env()?;
+    let config = ManagerConfig::from_env().unwrap();
     
     println!("{}", "╔════════════════════════════════════════╗".bright_cyan());
     println!("{}", "║   RinAgent Manager CLI - Client Mode   ║".bright_cyan());
@@ -51,9 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, mut rx) = mpsc::channel::<ManagerResponse>(100);
     
     // Spawn Redis pubsub listener
-    let redis_url = config.common.redis_url.clone();
+    let redis_pubsub = redis_client.get_async_pubsub().await?;
+    let redis_pub_sub = Arc::new(Mutex::new(redis_pubsub));
     tokio::spawn(async move {
-        handle_redis_responses(redis_url, tx).await;
+        handle_redis_responses(redis_pub_sub, tx).await;
     });
     
     // Spawn response printer
@@ -65,6 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Run interactive CLI
     run_interactive_cli(redis_conn).await?;
+    
+    // Cleanup
+    println!("{}", "Disconnected from manager service.".yellow());
     
     Ok(())
 }
@@ -85,7 +89,7 @@ async fn handle_redis_responses(
     loop {
         let msg = pubsub_conn.on_message().next().await;
         if let Some(msg) = msg {
-            
+
         }
     }
     
