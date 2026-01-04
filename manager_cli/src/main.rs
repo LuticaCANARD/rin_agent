@@ -1,26 +1,21 @@
+use anyhow::Result;
 use contract::config::{EnvConfigBuilder, ManagerConfig};
-use contract::{ ManagerResponse };
-use futures_util::StreamExt;
-use futures_util::lock::Mutex;
-use redis::aio::{MultiplexedConnection, PubSub};
-use std::io::{self, Write};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
-use colored::Colorize;
 
 mod command;
+mod terminal;
+mod connection;
 
-const COMMAND_CHANNEL: &str = "manager:commands";
-const RESPONSE_CHANNEL: &str = "manager:responses";
+use terminal::core::{input::InputHandler, terminal::TerminalManager, input::InputEvent};
+use terminal::ui::{AppState, layout::landing, pages};
+use connection::RedisManager;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Parse CLI arguments for environment loading strategy
+async fn main() -> Result<()> {
+    // 환경 변수 로드
     let strategy = contract::config::parse_env_strategy_from_args();
     let dotenv_path = contract::config::parse_dotenv_path_from_args();
     
-    // Load environment variables with specified strategy
     let mut builder = EnvConfigBuilder::new()
         .strategy(strategy)
         .ignore_missing(true);
@@ -29,192 +24,145 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder = builder.dotenv_path(path);
     }
     
-    builder.load().unwrap();
-    
-    // Build configuration from environment variables
-    let config = ManagerConfig::from_env().unwrap();
-    
-    println!("{}", "╔════════════════════════════════════════╗".bright_cyan());
-    println!("{}", "║   RinAgent Manager CLI - Client Mode   ║".bright_cyan());
-    println!("{}", "╚════════════════════════════════════════╝".bright_cyan());
-    println!();
-    println!("{}", "Connecting to Valkey/Redis...".yellow());
-    
-    // Initialize Redis client
-    let redis_client = redis::Client::open(config.common.redis_url.clone())?;
-    let redis_conn = redis_client.get_multiplexed_async_connection().await?;
-    let redis_conn = Arc::new(tokio::sync::Mutex::new(redis_conn));
-    
-    println!("{}", "✓ Connected to manager service\n".green());
-    
-    // Channel for communication between CLI and Redis handler
-    let (tx, mut rx) = mpsc::channel::<ManagerResponse>(100);
-    
-    // Spawn Redis pubsub listener
-    let redis_pubsub = redis_client.get_async_pubsub().await?;
-    let redis_pub_sub = Arc::new(Mutex::new(redis_pubsub));
-    tokio::spawn(async move {
-        handle_redis_responses(redis_pub_sub, tx).await;
-    });
-    
-    // Spawn response printer
-    tokio::spawn(async move {
-        while let Some(response) = rx.recv().await {
-            print_response(&response);
-        }
-    });
-    
-    // Run interactive CLI
-    run_interactive_cli(redis_conn).await?;
-    
-    // Cleanup
-    println!("{}", "Disconnected from manager service.".yellow());
-    
-    Ok(())
-}
+    let env_ret = builder.load();
 
-async fn handle_redis_responses(
-    redis: Arc<Mutex<PubSub>>,
-    tx: mpsc::Sender<ManagerResponse>,
-) {
-    // 채널 구독
-    let mut pubsub_conn = redis.lock().await;
-
-    if let Err(e) = pubsub_conn.subscribe(RESPONSE_CHANNEL).await {
-        eprintln!("{} {}", "Redis subscribe error:".red(), e);
-        return;
+    if let Err(e) = env_ret {
+        eprintln!("Failed to load environment variables: {}", e);
+        std::process::exit(1);
     }
     
-    println!("{}", format!("✓ Subscribed to '{}'", RESPONSE_CHANNEL).bright_black());// 메시지 스트림 처리
+    // Redis 설정 가져오기
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
+    // Redis Manager 초기화
+    let redis_manager = RedisManager::new(&redis_url)?;
+
+    // 애플리케이션 실행
+    run_app(redis_manager).await
+}
+
+/// 메인 애플리케이션 루프
+async fn run_app(redis_manager: RedisManager) -> Result<()> {
+    // 터미널 초기화
+    let mut terminal_manager = TerminalManager::new()?;
+    let input_handler = InputHandler::new();
+
+    // 앱 상태 초기화
+    let mut app_state = AppState::new();
+
+    // 메인 이벤트 루프
     loop {
-        let msg = pubsub_conn.on_message().next().await;
-        if let Some(msg) = msg {
+        // UI 렌더링
+        terminal_manager.terminal().draw(|f| {
+            let area = f.area();
+            
+            match app_state.current_page {
+                terminal::ui::app::Page::Landing => {
+                    landing::render(f, &app_state, area);
+                }
+                terminal::ui::app::Page::RedisKeys => {
+                    pages::redis_keys::render(f, &app_state, area);
+                }
+                terminal::ui::app::Page::RedisPubSub => {
+                    pages::redis_pubsub::render(f, &app_state, area);
+                }
+                terminal::ui::app::Page::Settings => {
+                    pages::settings::render(f, &app_state, area);
+                }
+            }
+        })?;
 
+        // 입력 처리
+        if let Some(event) = input_handler.poll_event(Duration::from_millis(100))? {
+            match event {
+                InputEvent::CtrlC | InputEvent::CtrlQ => {
+                    app_state.should_quit = true;
+                }
+                InputEvent::Char('q') if app_state.current_page == terminal::ui::app::Page::Landing => {
+                    app_state.should_quit = true;
+                }
+                InputEvent::Up => {
+                    if app_state.current_page == terminal::ui::app::Page::Landing {
+                        app_state.menu_up();
+                    }
+                }
+                InputEvent::Down => {
+                    if app_state.current_page == terminal::ui::app::Page::Landing {
+                        app_state.menu_down();
+                    }
+                }
+                InputEvent::Enter => {
+                    if app_state.current_page == terminal::ui::app::Page::Landing {
+                        let selected = app_state.menu_items.get(app_state.selected_menu).cloned();
+                        
+                        if let Some(menu_item) = selected {
+                            match menu_item.as_str() {
+                                "Redis Connection" => {
+                                    // Redis 연결 시도
+                                    app_state.set_status("Connecting to Redis...".to_string());
+                                    
+                                    match redis_manager.connect().await {
+                                        Ok(_) => {
+                                            app_state.set_redis_connected(true);
+                                        }
+                                        Err(e) => {
+                                            app_state.set_status(format!("Connection failed: {}", e));
+                                        }
+                                    }
+                                }
+                                "Redis Keys" => {
+                                    // Redis 키 조회
+                                    app_state.set_status("Loading keys...".to_string());
+                                    
+                                    match redis_manager.get_all_keys().await {
+                                        Ok(keys) => {
+                                            app_state.set_redis_keys(keys);
+                                            app_state.current_page = terminal::ui::app::Page::RedisKeys;
+                                        }
+                                        Err(e) => {
+                                            app_state.set_status(format!("Failed to load keys: {}", e));
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    app_state.execute_selected_menu();
+                                }
+                            }
+                        }
+                    }
+                }
+                InputEvent::Escape => {
+                    if app_state.current_page != terminal::ui::app::Page::Landing {
+                        app_state.go_back();
+                    }
+                }
+                InputEvent::Char('r') => {
+                    // 새로고침 (현재 페이지에서)
+                    if app_state.current_page == terminal::ui::app::Page::RedisKeys {
+                        match redis_manager.get_all_keys().await {
+                            Ok(keys) => {
+                                app_state.set_redis_keys(keys);
+                                app_state.set_status("Keys refreshed".to_string());
+                            }
+                            Err(e) => {
+                                app_state.set_status(format!("Refresh failed: {}", e));
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
-    }
-    
-}
 
-fn print_response(response: &ManagerResponse) {
-    match response {
-        ManagerResponse::HealthReport {
-            cpu_usage,
-            memory_usage_percent,
-            total_memory_mb,
-            used_memory_mb,
-            timestamp,
-        } => {
-            println!("\n{}", "=== System Health Report ===".bright_blue());
-            println!("  CPU Usage: {}%", format!("{:.2}", cpu_usage).yellow());
-            println!(
-                "  Memory: {}% ({} MB / {} MB)",
-                format!("{:.2}", memory_usage_percent).yellow(),
-                used_memory_mb,
-                total_memory_mb
-            );
-            println!("  Timestamp: {}", timestamp);
+        // 종료 체크
+        if app_state.should_quit {
+            break;
         }
-        ManagerResponse::ProcessStatus {
-            process_name,
-            is_running,
-            pid,
-            timestamp,
-        } => {
-            if *is_running {
-                println!(
-                    "{} Process '{}' is running (PID: {:?})",
-                    "✓".green(),
-                    process_name.bright_white(),
-                    pid
-                );
-            } else {
-                println!(
-                    "{} Process '{}' is not running",
-                    "✗".red(),
-                    process_name.bright_white()
-                );
-            }
-        }
-        ManagerResponse::Success {
-            command,
-            message,
-            data,
-        } => {
-            println!("{} {}: {}", "✓".green(), command.bright_white(), message);
-            if let Some(data) = data {
-                println!("  Data: {}", serde_json::to_string_pretty(data).unwrap());
-            }
-        }
-        ManagerResponse::Error { command, error } => {
-            eprintln!("{} {}: {}", "✗".red(), command.bright_white(), error);
-        }
-    }
-}
 
-async fn run_interactive_cli(
-    redis_conn: Arc<tokio::sync::Mutex<MultiplexedConnection>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("{}", "Type 'help' for available commands\n".bright_black());
-    
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    
-    loop {
-        // Print prompt
-        print!("{} ", "manager>".bright_green().bold());
-        stdout.flush()?;
-        
-        // Read input
-        let mut input = String::new();
-        stdin.read_line(&mut input)?;
-        
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
-        
-        // Parse command
-        let parts: Vec<&str> = input.split_whitespace().collect();
-        let command = parts[0].to_lowercase();
-        
-        match command.as_str() {
-            "help" | "h" | "?" => {
-                print_help();
-            }
-            "exit" | "quit" | "q" => {
-                println!("{}", "Disconnecting from manager...".yellow());
-                break;
-            }
-            _ => {
-                eprintln!(
-                    "{} Unknown command: '{}'. Type 'help' for available commands.",
-                    "✗".red(),
-                    input
-                );
-            }
-        }
+        // CPU 사용률 절감을 위한 짧은 대기
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    
+
     Ok(())
-}
-
-fn print_help() {
-    println!("\n{}", "=== Available Commands ===".bright_blue());
-    println!("  {} - Show this help message", "help, h, ?".bright_white());
-    println!("  {} - Request system health status", "status, s".bright_white());
-    println!("  {} - Request system information", "info, i".bright_white());
-    println!(
-        "  {} - Restart a process",
-        "restart, r <name>".bright_white()
-    );
-    println!(
-        "  {} - Start monitoring a process",
-        "monitor, m <name> [interval]".bright_white()
-    );
-    println!(
-        "  {} - Stop monitoring a process",
-        "unmonitor, u <name>".bright_white()
-    );
-    println!("  {} - Exit the CLI", "exit, quit, q".bright_white());
-    println!();
 }
