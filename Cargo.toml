@@ -4,8 +4,10 @@ members = [
     "rin_agent",
     "rin_agent/gemini_live_api",
     "manager",
+    "manager_cli",
     "entity",
     "migration",
+    "contract",
 ]
 
 [profile.dev.package.audiopus_sys]

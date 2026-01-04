@@ -1,4 +1,4 @@
-use contract::LogPacket;
+use contract::{LogLevel, LogPacket};
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use std::time::Duration;
@@ -59,7 +59,7 @@ impl BulkLogger {
                 }
             };
 
-            if let Err(e) = conn.lpush::<&str, String, ()>("logs", serialized).await {
+            if let Err(e) = conn.lpush::<&str, String, ()>("main_logs", serialized).await {
                 eprintln!("Failed to push to Redis: {}", e);
             }
         }
@@ -77,16 +77,42 @@ impl BulkLogger {
                 .collect();
 
             if !serialized.is_empty() {
-                if let Err(e) = conn.lpush::<&str, Vec<String>, ()>("logs", serialized).await {
+                if let Err(e) = conn.lpush::<&str, Vec<String>, ()>("main_logs", serialized).await {
                     eprintln!("Failed to bulk push to Redis: {}", e);
                 }
             }
         }
     }
+    pub async fn pop_all(&mut self) -> Vec<BulkLogPacket> {
+        let mut packets = Vec::new();
+        
+        if let Some(ref mut conn) = self.connection {
+            // Lua 스크립트로 원자적 LRANGE + DEL
+            let script = redis::Script::new(r"
+                local items = redis.call('LRANGE', KEYS[1], 0, -1)
+                redis.call('DEL', KEYS[1])
+                return items
+            ");
+            
+            match script.key(&["main_logs"]).invoke_async::<Vec<String>>(conn).await {
+                Ok(items) => {
+                    for item in items {
+                        match serde_json::from_str::<BulkLogPacket>(&item) {
+                            Ok(packet) => packets.push(packet),
+                            Err(e) => eprintln!("Failed to deserialize log packet: {}", e),
+                        }
+                    }
+                }
+                Err(e) => eprintln!("Failed to pop all logs from Redis: {}", e),   
+            }
+        }
+        packets
+    }
 }
 
 pub struct BulkLoggerHandler {
     tx: mpsc::Sender<BulkLogPacket>,
+    thread_handle: tokio::task::JoinHandle<()>,
 }
 
 impl BulkLoggerHandler {
@@ -98,11 +124,11 @@ impl BulkLoggerHandler {
         let logger = BulkLogger::new(logger_args).await?;
         let (tx, rx) = mpsc::channel::<BulkLogPacket>(1000);
 
-        tokio::spawn(async move {
+        let thread_handle = tokio::spawn(async move {
             Self::process_logs(logger, rx, batch_size, flush_interval_secs).await;
         });
 
-        Some(Self { tx })
+        Some(Self { tx, thread_handle })
     }
 
     async fn process_logs(
